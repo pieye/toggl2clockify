@@ -9,6 +9,8 @@ make sure you have a file called "config.json" in the folder from where you invo
 
 You can run the tool as often as you want, all time entries are checked for existance before being added.
 
+Clockify doesn't allow to add a time entry for a different user account, hence you have to specify all clockify API keys of all users for the migration.
+
 The config.json file needs the following entries:
 - TogglKey: the toggl API key
 - ClockifyKeys: A list of all API keys of all clockify users which shall be migrated
