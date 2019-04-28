@@ -1,7 +1,7 @@
 # toggl2clockify
-Export data from toggl to clockify
+Migrate data from toggl to clockify
 
-No warrenty that the tools works as expected. Read the following lines CAREFULLY and TEST it on a non productive system!
+** No warrenty that the tools works as expected. Read the following lines CAREFULLY and TEST it on a non productive system! **
 
 # Usage
 If you're on windows you can run the file bin/toggl2clockify.exe directly or through python by "python toggl2clockify.py"
