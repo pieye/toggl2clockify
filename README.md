@@ -27,6 +27,7 @@ bin/toggl2clockify.exe -h
 
 # What is migrated
 - All clients of the workspace
+- All tags of the workspace
 - The following project attributes are migrated:
     - name
     - client
@@ -44,10 +45,10 @@ bin/toggl2clockify.exe -h
     - projectID
     - userID
     - end
+    - tagIds
     
-    - NOT MIRGATED: taskId, tagIds, timeInterval (not sure what purpose this serves), isLocked
+    - NOT MIRGATED: taskId, timeInterval (not sure what purpose this serves), isLocked
     
 # What is not migrated
-- Tags
 - Tasks
 - User groups

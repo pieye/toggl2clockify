@@ -28,6 +28,7 @@ class TogglAPI:
         self._syncProjects = True
         self._syncClients = True
         self._syncUsers = True
+        self._syncTags = True
         
     def _request(self, url, params=None):
         string=self.apiToken+':api_token'
@@ -54,6 +55,20 @@ class TogglAPI:
         if ws_id == None:
             raise RuntimeError("Workspace %s not found. Available workspaces: %s"%(workspaceName, workspaces))
         return ws_id
+    
+    def getWorkspaceTags(self, workspaceName):
+        if self._syncTags == True:
+            self.tags = []
+            wsId = self.getWorkspaceID(workspaceName)       
+            url = r"https://www.toggl.com/api/v8/workspaces/%d/tags"%wsId
+            req = self._request(url)
+            if req.ok:
+                self.tags = req.json()
+            else:
+                raise RuntimeError("Error getting toggl workspace tags, status code=%d, msg=%s"%(req.status_code, req.reason))
+            self._syncTags = False
+        
+        return self.tags
     
     def getWorkspaceUsers(self, workspaceName):
         if self._syncUsers == True:

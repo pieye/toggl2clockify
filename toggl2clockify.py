@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--skipClients", help="don't sync workspace clients", action="store_true")
 parser.add_argument("--skipProjects", help="don't sync workspace projects", action="store_true")
 parser.add_argument("--skipEntries", help="don't sync workspace time entries", action="store_true")
+parser.add_argument("--skipTags", help="don't sync tags", action="store_true")
 parser.add_argument("--reqTimeout", help="sleep time between clockify web requests", type=float, default=0.01)
 args = parser.parse_args()
 
@@ -113,7 +114,7 @@ if ok:
         logger.info("-------------------------------------------------------------")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 1 of 3: Import clients")
+        logger.info("Phase 1 of 4: Import clients")
         logger.info("-------------------------------------------------------------")
         if args.skipClients == False:
             numEntries, numOk, numSkips, numErr = cl.syncClients(ws)
@@ -125,14 +126,14 @@ if ok:
             logger.info("... skipping phase 1")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 1 of 3 (Import clients) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 1 of 4 (Import clients) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 2 of 3: Import projects")
+        logger.info("Phase 2 of 4: Import tags")
         logger.info("-------------------------------------------------------------")
-        if args.skipProjects == False:
-            numEntries, numOk, numSkips, numErr = cl.syncProjects(ws)
+        if args.skipTags == False:
+            numEntries, numOk, numSkips, numErr = cl.syncTags(ws)
         else:
             numEntries=0
             numOk=0
@@ -141,11 +142,27 @@ if ok:
             logger.info("... skipping phase 2")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 2 of 3 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 2 of 4 (Import tags) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 3 of 3: Import time entries")
+        logger.info("Phase 3 of 4: Import projects")
+        logger.info("-------------------------------------------------------------")
+        if args.skipProjects == False:
+            numEntries, numOk, numSkips, numErr = cl.syncProjects(ws)
+        else:
+            numEntries=0
+            numOk=0
+            numSkips=0
+            numErr=0
+            logger.info("... skipping phase 3")
+        
+        logger.info("-------------------------------------------------------------")
+        logger.info("Phase 3 of 4 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("-------------------------------------------------------------")        
+        
+        logger.info("-------------------------------------------------------------")
+        logger.info("Phase 4 of 4: Import time entries")
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
             numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime)
@@ -157,7 +174,7 @@ if ok:
             logger.info("... skipping phase 3")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 3 of 3 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 4 of 4 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
         
         logger.info("finished importing workspace '%s'"%(ws))

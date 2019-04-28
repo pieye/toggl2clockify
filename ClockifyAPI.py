@@ -47,12 +47,13 @@ class MemberShip:
 
 
 class ClockifyAPI:
-    def __init__(self, apiToken, adminEmail="", reqTimeout=1):
+    def __init__(self, apiToken, adminEmail="", reqTimeout=0.01):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
         self._syncClients = True
         self._syncUsers = True
         self._syncProjects = True
+        self._syncTags = True
         self._adminEmail = adminEmail
         self._reqTimeout = reqTimeout
         
@@ -213,8 +214,6 @@ class ClockifyAPI:
             if p["name"] == project:
                 pId = p["id"]
         if pId == None:
-#            for p in projects:
-#                print (p["name"])
             raise RuntimeError("Project %s not found in workspace %s"%(project, workspace))
         return pId
 
@@ -269,8 +268,56 @@ class ClockifyAPI:
             rv = RetVal.ERR
         return rv
     
+    def getTags(self, workspace):
+        if self._syncTags == True:
+            self.tags = []
+            wsId = self.getWorkspaceID(workspace)
+            url = self.url + "/workspaces/%s/tags"%wsId
+            rv = self._request(url, typ="GET")
+            if rv.ok:
+                self.tags = rv.json()
+            else:
+                self.logger.error("Error requesting workspace tags, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            self._syncTags = False
+        return self.tags
+    
+    def addTag(self, tagName, workspace):
+        wsId = self.getWorkspaceID(workspace)
+        url = self.url + "/workspaces/%s/tags"%wsId
+        params = {"name": tagName}
+        rv = self._request(url, body=params, typ="POST")
+        if rv.status_code == 201:
+            self._syncTags = True
+            rv = RetVal.OK
+        elif rv.status_code == 400:
+            rv = RetVal.EXISTS
+        else:
+            self.logger.warning("Error adding tag %s, status code=%d, msg=%s"%(tagName, rv.status_code, rv.reason))
+            rv = RetVal.ERR
+        return rv
+    
+    def getTagName(self, tagID, workspace):
+        tName = None
+        tags = self.getTags(workspace)
+        for t in tags:
+            if t["id"] == tagID:
+                tName = t["name"]
+        if tName == None:
+            raise RuntimeError("TagID %s not found in workspace %s"%(tagID, workspace))
+        return tName
+    
+    def getTagID(self, tagName, workspace):
+        tId = None
+        tags = self.getTags(workspace)
+        for t in tags:
+            if t["name"] == tagName:
+                tId = t["id"]
+        if tId == None:
+            raise RuntimeError("Tag %s not found in workspace %s"%(tagName, workspace))
+        return tId
+    
     def addEntry(self, start, description, projectName, userMail, workspace, 
-                 timeZone="Z", end=None, billable=False):
+                 timeZone="Z", end=None, billable=False, tagNames=None):
         rv = self._loadUser(userMail)
         data = None
         
@@ -295,6 +342,12 @@ class ClockifyAPI:
                 params["projectId"] = projectId
             if end != None:
                 params["end"] = end
+            if tagNames != None:
+                tagIDs = []
+                for tag in tagNames:
+                    tid = self.getTagID(tag, workspace)
+                    tagIDs.append(tid)
+                params["tagIds"] = tagIDs
                 
             rv, entr = self.getTimeEntryForUser(userMail, workspace, description, projectName,
                                          start, timeZone=timeZone)
@@ -314,6 +367,14 @@ class ClockifyAPI:
                             anyDiff = True
                         if self.userID != d["userId"]:
                             anyDiff = True
+                        if tagNames != None:
+                            tagIdsRcv = d["tagIds"]
+                            tagNamesRcv = []
+                            for tagID in tagIdsRcv:
+                                tagNamesRcv.append(self.getTagName(tagID, workspace))
+                            if set(tagNames) != set(tagNamesRcv):
+                                anyDiff = True
+                            
                         if anyDiff == False:
                             filteredData.append(d)
                     entr = filteredData
