@@ -12,6 +12,7 @@ import dateutil.parser
 import pytz
 import datetime
 import logging
+import sys
 
 class Clue:
     def __init__(self, clockifyKey, clockifyAdmin, togglKey, clockifyReqTimeout=1):
@@ -95,6 +96,7 @@ class Clue:
                 members = self.toggl.getProjectUsers(p["name"], workspace)
                 if members == None:
                     members = []
+                        
                 m = ClockifyAPI.MemberShip(self.clockify)
                 for member in members:
                     try:
@@ -104,10 +106,13 @@ class Clue:
                         err = True
                         break
                         
-                    try:                    
+                    try:
+                        manager = False
+                        if member["manager"] == True:
+                            manager = True
                         m.addMembership(userMail, p["name"], workspace, 
                           membershipType="PROJECT", membershipStatus="ACTIVE",
-                          hourlyRate=None)
+                          hourlyRate=None,manager=manager)
                     except Exception as e:
                         self.logger.warning ("error adding user %s to clockify project, msg=%s"%(userMail, str(e)))
                         err = True
@@ -116,13 +121,18 @@ class Clue:
                 if err == False:
                     
                     rv = self.clockify.addProject(name, clientName, workspace, isPublic, billable, 
-                           color, memberships=m)
+                           color, memberships=m, manager=m.getManagerUserMail())
                     if rv == ClockifyAPI.RetVal.OK:
                         self.logger.info("...ok")
                         numOk+=1
                     elif rv == ClockifyAPI.RetVal.EXISTS:
                         self.logger.info("project %s already exists, skip..."%name)
                         numSkips+=1
+                    elif rv == ClockifyAPI.RetVal.FORBIDDEN:
+                        manager = m.getManagerUserMail()
+                        self.logger.error("Could not add project %s. %s was project admin in toggl, but seems to \
+be no admin in clockify. Check your workspace settings and grant admin rights to %s."%(name, manager, manager))
+                        sys.exit(1)
                     else:
                         numErr+=1
                 else:
@@ -134,44 +144,93 @@ class Clue:
             
         return numPrjs, numOk, numSkips, numErr
     
+    def syncProjectsArchive(self, workspace):
+        prjs = self.toggl.getWorkspaceProjects(workspace)
+        clockifyPrjs = self.clockify.getProjects(workspace)
+        clockifyPrjNames = []
+        for pr in clockifyPrjs:
+            clockifyPrjNames.append(pr["name"])
+        
+        idx = 0
+        numPrjs = len(prjs)
+        numOk = 0
+        numSkips = 0
+        numErr = 0
+        for p in prjs:
+            if p["active"] == False:
+                name = p["name"]
+                self.logger.info("project %s is not active, trying to archive (%d of %d)"%(name, idx, numPrjs))
+                rv = self.clockify.archiveProject(name, workspace)
+                if rv == ClockifyAPI.RetVal.OK:
+                    self.logger.info("...ok")
+                    numOk+=1
+                else:
+                    numErr+=1
+            else:
+                self.logger.info("project %s is still active, skipping (%d of %d)"%(name, idx, numPrjs))
+                numSkips+=1
+            
+            idx += 1
+            
+        return numPrjs, numOk, numSkips, numErr
+    
     def timeToUtc(self, time):
         t = dateutil.parser.parse(time)
         utc = t.astimezone(pytz.UTC).isoformat().split("+")[0]#
         return dateutil.parser.parse(utc)
-        
-    
-    def syncEntries(self, workspace, startTime):
-        until = datetime.datetime.now()
-        entries = self.toggl.getReports(workspace, startTime, until)
-        idx = 0
-        numSkips = 0
-        numOk = 0
-        numErr = 0
-        numEntries = len(entries)
-        for e in entries:
-            idx+=1
-            self.logger.info("adding entry %d of %d"%(idx, len(entries)))
-            start = self.timeToUtc(e["start"])
-            end = self.timeToUtc(e["end"])
-            description = e["description"]
-            projectName = e["project"]
-            userID = e["uid"]
-            billable = e["is_billable"]
-            tagNames = e["tags"]
+
+    def onNewReports(self, entries, totalCount):
             
-            userMail = self.toggl.getUserEmail(userID, workspace)
-            rv, data = self.clockify.addEntry(start, description, projectName, userMail, workspace, 
-                     timeZone="Z", end=end, billable=billable, tagNames=tagNames)
-            if rv == ClockifyAPI.RetVal.ERR:
-                numErr+=1
-            elif rv == ClockifyAPI.RetVal.EXISTS:
-                self.logger.info("entry already exists, skip...")
-                numSkips+=1
-            else:
-                self.logger.info("...ok")
-                numOk+=1
+        if entries == None and totalCount == 0:
+            #next page
+            self._idx = 0
+        else:
+            for e in entries:
+                self._idx+=1
+                self.logger.info("adding entry %s, project: %s (%d of %d)"%(e["description"], e["project"], self._idx, totalCount))
+                start = self.timeToUtc(e["start"])
+                end = self.timeToUtc(e["end"])
+                description = e["description"]
+                projectName = e["project"]
+                userID = e["uid"]
+                billable = e["is_billable"]
+                tagNames = e["tags"]
                 
-        return numEntries, numOk, numSkips, numErr
+                try:
+                    userMail = self.toggl.getUserEmail(userID, self._workspace)
+                except:
+                    if self._skipInvTogglUsers:
+                        self.logger.warning("user ID %s not in toggl workspace, skipping entry %s..."%(userID, description))    
+                        continue
+                    else:
+                        raise
+                rv, data = self.clockify.addEntry(start, description, projectName, userMail, self._workspace, 
+                         timeZone="Z", end=end, billable=billable, tagNames=tagNames)
+                if rv == ClockifyAPI.RetVal.ERR:
+                    self._numErr+=1
+                elif rv == ClockifyAPI.RetVal.EXISTS:
+                    self.logger.info("entry already exists, skip...")
+                    self._numSkips+=1
+                else:
+                    self.logger.info("...ok")
+                    self._numOk+=1
+            self._numEntries += len(entries)
+    
+    
+    def syncEntries(self, workspace, startTime, skipInvTogglUsers=False):
+        until = datetime.datetime.now()
+        self._idx = 0
+        self._numSkips = 0
+        self._numOk = 0
+        self._numErr = 0
+        self._numEntries = 0
+        self._workspace = workspace
+        self._skipInvTogglUsers = skipInvTogglUsers
+        
+        
+        self.toggl.getReports(workspace, startTime, until, self.onNewReports)
+                
+        return self._numEntries, self._numOk, self._numSkips, self._numErr
     
     def getTogglWorkspaces(self):
         workspaces = []

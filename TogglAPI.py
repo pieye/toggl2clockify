@@ -11,6 +11,7 @@ import requests
 import time
 import datetime
 import logging
+import json
 
 class TogglAPI:
     def __init__(self, apiToken):
@@ -97,15 +98,20 @@ class TogglAPI:
         if self._syncProjects == True:
             wsId = self.getWorkspaceID(workspaceName)       
             url = r"https://www.toggl.com/api/v8/workspaces/%d/projects"%wsId
-            req = self._request(url)
+            params = {"active": "both"}
+            req = self._request(url, params=params)
             self.projects = req.json()
             self._syncProjects = False
+            
+            f = open("toggl_projects.json", "w")
+            f.write(json.dumps(self.projects, indent=2))
+            f.close()
         
         return self.projects
             
     
-    def getReports(self, workspaceName, since, until, timeZone="CET"):
-        entries = []
+    def getReports(self, workspaceName, since, until, cb, timeZone="CET"):
+#        entries = []
         
         end = False
         nextStart = since
@@ -116,22 +122,25 @@ class TogglAPI:
                 end = True
             
             self.logger.info ("fetching entries from %s to %s"%(nextStart.isoformat(), curStop.isoformat()))
-            entries += self._getReports(workspaceName, nextStart, curStop, timeZone=timeZone)
+            self._getReports(workspaceName, nextStart, curStop, cb, timeZone=timeZone)
             if end:    
                 break
             
+            cb(None, 0)
+            
             nextStart = curStop
             
-        return entries
+#        return entries
     
-    def _getReports(self, workspaceName, since, until, timeZone="CET"):
+    def _getReports(self, workspaceName, since, until, cb, timeZone="CET"):
         since = since.isoformat()+timeZone
         until = until.isoformat()+timeZone
 
         wsId = self.getWorkspaceID(workspaceName)        
         curPage = 1
-        entries = []
+#        entries = []
         
+        numEntries = 0
         while True:
             params={'user_agent':self.email,'workspace_id':wsId,"since":since,"until":until, "page":curPage}
             reportUrl = "https://toggl.com/reports/api/v2/details"
@@ -143,13 +152,17 @@ class TogglAPI:
             
             jsonresp = response.json()
             
-            if len(jsonresp["data"]) == 0:
+            data = jsonresp["data"]
+            numEntries += len(data)
+            totalCount = jsonresp["total_count"]
+            if len(data) == 0:
                 break
             else:
-                entries += jsonresp["data"]
+                cb(data, totalCount)
+#                entries += jsonresp["data"]
                 
-            self.logger.info ("got %d from %d entries"%(len(entries), jsonresp["total_count"]))
-        return entries
+            self.logger.info ("got %d from %d entries"%(numEntries, totalCount))
+#        return entries
     
     def getProjectID(self, projectName, workspaceName):
         pID = None
@@ -194,5 +207,5 @@ class TogglAPI:
             if u["id"] == userID:
                 email = u["email"]
         if email == None:
-            raise RuntimeError("userID %d not found in workspace %s"%(userID, workspaceName))
+            raise RuntimeError("userID %d (%s) not found in workspace %s"%(userID, email, workspaceName))
         return email

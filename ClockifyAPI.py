@@ -10,11 +10,13 @@ import requests
 import time
 from enum import Enum
 import logging
+import json
 
 class RetVal(Enum):
     OK=0
     ERR=1
     EXISTS=2
+    FORBIDDEN=3
 
 class HourlyRate:
     def __init__(self, amount, currency="EUR"):
@@ -26,10 +28,12 @@ class MemberShip:
     def __init__(self, api):
         self.connector = api
         self.memberShip = []
+        self.workspace = ""
         
     def addMembership(self, userMail, projectName, workspace, 
                       membershipType="PROJECT", membershipStatus="ACTIVE",
-                      hourlyRate=None):
+                      hourlyRate=None, manager=False):
+        self.workspace = workspace
         userID = self.connector.getUserIDByMail(userMail, workspace)
         #prjID = self.connector.getProjectID(projectName, workspace)
         
@@ -38,9 +42,18 @@ class MemberShip:
         membership["membershipType"] = membershipType
         #membership["targetId"] = prjID
         membership["userId"] = userID
+        membership["manager"] = manager
         if hourlyRate != None:
             membership["hourlyRate"] = hourlyRate.rate
         self.memberShip.append(membership)
+        
+    def getManagerUserMail(self):
+        mail = ""
+        for m in self.memberShip:
+            if m["manager"] == True:
+                mail = self.connector.getUserMailById(m["userId"], self.workspace)
+                break
+        return mail
         
     def getData(self):
         return self.memberShip
@@ -107,6 +120,7 @@ class ClockifyAPI:
                 if rv.status_code != 200:
                     raise RuntimeError("error loading user")
                 userLoaded = True
+                self._syncTags = True
                 self._loadedUserEmail = user["email"]
                 break
             
@@ -152,6 +166,10 @@ class ClockifyAPI:
         return self.workspaces
     
     def addClient(self, name, workspace):
+        
+        curUser = self._loadedUserEmail
+        self._loadAdmin()
+        
         wsId = self.getWorkspaceID(workspace)
         url = self.url + "/workspaces/%s/clients"%wsId
         params = {"name":name}
@@ -165,15 +183,23 @@ class ClockifyAPI:
                 rv = RetVal.ERR
         else:
             rv = RetVal.OK
+            
+        self._loadUser(curUser)
+            
         return rv
    
     def getClients(self, workspace):
         if self._syncClients == True:
+            curUser = self._loadedUserEmail
+            self._loadAdmin()
+            
             wsId = self.getWorkspaceID(workspace)
             url = self.url + "/workspaces/%s/clients"%wsId
             rv = self._request(url, typ="GET")
             self.clients = rv.json()
             self._syncClients = False
+            
+            self._loadUser(curUser)
         return self.clients
     
     def getClientID(self, client, workspace):
@@ -186,30 +212,56 @@ class ClockifyAPI:
             raise RuntimeError("Client %s not found in workspace %s"%(client, workspace))
         return clId
 
-    def getProjects(self, workspace):
+    def getProjects(self, workspace, skipPrjQuery=False):
         if self._syncProjects == True:
             curUser = self._loadedUserEmail
-            
-            self._loadAdmin()
-            wsId = self.getWorkspaceID(workspace)
-            url = self.url + "/workspaces/%s/projects"%wsId
             self.projects = []
-            pg=1
-            params = {"page": pg}
-            rv = self._request(url, body=params, typ="GET")
-            if rv.ok:
-                self.projects = rv.json()
-            else:
-                self.logger.error("Error requesting workspace projects, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            
+            for user in self._APIusers:
+                self.logger.info("synchronizing clockify projects for user %s..."%user["email"])
+                self._loadUser(user["email"])
                 
+                wsId = self.getWorkspaceID(workspace)
+                url = self.url + "/workspaces/%s/projects"%wsId
+                pg=1
+                while True:
+                    params = {"page": pg}
+                    rv = self._request(url, body=params, typ="GET")
+                    prj0ID = -1
+                    if rv.ok:
+                        prjs = rv.json()
+                        self.logger.info("amount of projects: %d"%len(prjs))
+                        for p in prjs:
+                            curPIDs = [x["id"] for x in self.projects]
+                            if p["id"] not in curPIDs:
+                                self.projects.append(p)
+                        if len(prjs) < 50:
+                            break
+                        if prj0ID == prjs[0]["id"]:
+                            break
+                        prj0ID = prjs[0]["id"]
+                    else:
+                        self.logger.error("Error requesting workspace projects, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+                        break
+                    pg+=1
+                   
+            self.logger.info("finsihed synchronizing clockify projects, saving results")
+            f = open("clockify_projects.json", "w")
+            f.write(json.dumps(self.projects, indent=2))
+            f.close()
+            self._loadUser(curUser)
             self._syncProjects = False
             
-            self._loadUser(curUser)
+#        print (self.projects)
         return self.projects
 
-    def getProjectID(self, project, workspace):
+    def getProjectID(self, project, workspace, skipPrjQuery=False):
         pId = None
-        projects = self.getProjects(workspace)
+        if skipPrjQuery:
+            projects = self.projects
+        else:
+            projects = self.getProjects(workspace, skipPrjQuery)
+            
         for p in projects:
             if p["name"] == project:
                 pId = p["id"]
@@ -219,11 +271,16 @@ class ClockifyAPI:
 
     def getUsers(self, workspace):
         if self._syncUsers == True:
+            curUser = self._loadedUserEmail
+            self._loadAdmin()            
+            
             wsId = self.getWorkspaceID(workspace)
             url = self.url + "/workspace/%s/users"%wsId
             rv = self._request(url, typ="GET")
             self.users = rv.json()
             self._syncUsers = False
+            
+            self._loadUser(curUser)
         return self.users
 
     def getUserIDByName(self, user, workspace):
@@ -236,6 +293,16 @@ class ClockifyAPI:
             raise RuntimeError("User %s not found in workspace %s"%(user, workspace))
         return uId
     
+    def getUserMailById(self, userID, workspace):
+        mail = None
+        users = self.getUsers(workspace)
+        for u in users:
+            if u["id"] == userID:
+                mail = u["email"]
+        if mail == None:
+            raise RuntimeError("User ID %s not found in workspace %s"%(userID, workspace))
+        return mail    
+    
     def getUserIDByMail(self, email, workspace):
         uId = None
         users = self.getUsers(workspace)
@@ -247,7 +314,17 @@ class ClockifyAPI:
         return uId    
     
     def addProject(self, name, client, workspace, isPublic=False, billable=False, 
-                   color="#f44336", memberships=None, hourlyRate=None):
+                   color="#f44336", memberships=None, hourlyRate=None, manager=""):
+                   
+        curUser = self._loadedUserEmail
+        if manager == "":
+            if isPublic == False:
+                admin = self._adminEmail
+                self.logger.warning("no manager found for project %s, making %s as manager"%(name, admin))
+            self._loadAdmin()
+        else:
+            self._loadUser(manager)
+                   
         wsId = self.getWorkspaceID(workspace)
         clId = self.getClientID(client, workspace)
         url = self.url + "/workspaces/%s/projects"%wsId
@@ -263,13 +340,21 @@ class ClockifyAPI:
             rv = RetVal.OK
         elif rv.status_code == 400:
             rv = RetVal.EXISTS
+        elif rv.status_code == 403:
+            rv = RetVal.FORBIDDEN
         else:
             self.logger.warning("Error adding project  %s, status code=%d, msg=%s"%(name, rv.status_code, rv.reason))
             rv = RetVal.ERR
+        
+        self._loadUser(curUser)
+        
         return rv
     
     def getTags(self, workspace):
         if self._syncTags == True:
+            curUser = self._loadedUserEmail
+            self._loadAdmin()
+            
             self.tags = []
             wsId = self.getWorkspaceID(workspace)
             url = self.url + "/workspaces/%s/tags"%wsId
@@ -279,9 +364,14 @@ class ClockifyAPI:
             else:
                 self.logger.error("Error requesting workspace tags, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             self._syncTags = False
+            
+            self._loadUser(curUser)
         return self.tags
     
     def addTag(self, tagName, workspace):
+        curUser = self._loadedUserEmail
+        self._loadAdmin()
+        
         wsId = self.getWorkspaceID(workspace)
         url = self.url + "/workspaces/%s/tags"%wsId
         params = {"name": tagName}
@@ -294,6 +384,8 @@ class ClockifyAPI:
         else:
             self.logger.warning("Error adding tag %s, status code=%d, msg=%s"%(tagName, rv.status_code, rv.reason))
             rv = RetVal.ERR
+        
+        self._loadUser(curUser)
         return rv
     
     def getTagName(self, tagID, workspace):
@@ -327,6 +419,8 @@ class ClockifyAPI:
             
             if projectName != None:
                 projectId = self.getProjectID(projectName, workspace)
+            else:
+                self.logger.warning("no project in entry %s"%description)
             
             startTime = start.isoformat()+timeZone
             if end != None:
@@ -360,19 +454,24 @@ class ClockifyAPI:
                         anyDiff = False
                         if params["start"] != d['timeInterval']["start"]:
                             anyDiff = True
+#                            self.logger.info("entry diff @start: %s %s"%(str(params["start"]), str(d['timeInterval']["start"])))
                         if 'projectId' in params:
                             if params["projectId"] != d['projectId']:
                                 anyDiff = True
+#                                self.logger.info("entry diff @projectID: %s %s"%(str(params["projectId"]), str(d['projectId'])))
                         if params["description"] != d["description"]:
                             anyDiff = True
+#                            self.logger.info("entry diff @desc: %s %s"%(str(params["description"]), str(d['description'])))
                         if self.userID != d["userId"]:
                             anyDiff = True
+#                            self.logger.info("entry diff @userID: %s %s"%(str(self.userID), str(d['userId'])))
                         if tagNames != None:
                             tagIdsRcv = d["tagIds"]
                             tagNamesRcv = []
                             for tagID in tagIdsRcv:
                                 tagNamesRcv.append(self.getTagName(tagID, workspace))
                             if set(tagNames) != set(tagNamesRcv):
+#                                self.logger.info("entry diff @tagNames: %s %s"%(str(set(tagNames)), str(set(tagNamesRcv))))
                                 anyDiff = True
                             
                         if anyDiff == False:
@@ -426,23 +525,40 @@ class ClockifyAPI:
             
         return rv, data
     
-    def deleteEntriesOfUser(self, userMail, workspace):
-        rv, entries = self.getTimeEntryForUser(userMail, workspace, "", None, None, "")
+    def archiveProject(self, projectName, workspace, skipPrjQuery=False):
+        wsId = self.getWorkspaceID(workspace)
+        pID = self.getProjectID(projectName, workspace, skipPrjQuery=skipPrjQuery)
+        url = "https://api.clockify.me/api/workspaces/%s/projects/%s/archive"%(wsId, pID)
+        rv = self._request(url, typ="GET")
+        if rv.status_code == 200:
+            rv = RetVal.OK
+        else:
+            self.logger.warning("Archiving project %s failed, status code=%d, msg=%s"%(projectName, rv.status_code, rv.reason))
+            rv = RetVal.ERR
         
-        if rv == RetVal.OK:
-            curUser = self._loadedUserEmail
-            rv = self._loadAdmin()
+        return rv
+    
+    def deleteEntriesOfUser(self, userMail, workspace):
+        while True:
+            rv, entries = self.getTimeEntryForUser(userMail, workspace, "", None, None, "")
+            numEntries = 0
             if rv == RetVal.OK:
-                numEntries = len(entries)
-                idx = 0
-                for e in entries:
-                    msg = "deleting entry %d of %d"%(idx+1, numEntries)
-                    self.logger.info(msg)
-                    rv = self.deleteEntry(e["id"], workspace)
-                    if rv == RetVal.OK:
-                        self.logger.info("...ok")   
-                    idx += 1
-            self._loadUser(curUser)
+                curUser = self._loadedUserEmail
+                rv = self._loadAdmin()
+                if rv == RetVal.OK:
+                    numEntries = len(entries)
+                    idx = 0
+                    for e in entries:
+                        msg = "deleting entry %d of %d"%(idx+1, numEntries)
+                        self.logger.info(msg)
+                        rv = self.deleteEntry(e["id"], workspace)
+                        if rv == RetVal.OK:
+                            self.logger.info("...ok")   
+                        idx += 1
+                self._loadUser(curUser)
+            if numEntries == 0:
+                break
+        return numEntries
                     
     def deleteEntry(self, entryID, workspace):
         wsId = self.getWorkspaceID(workspace)
@@ -453,3 +569,58 @@ class ClockifyAPI:
         else:
             self.logger.warning("Error deleteEntry, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             return RetVal.ERR
+
+    def deleteProject(self, projectName, workspace, skipPrjQuery=False):
+        wsId = self.getWorkspaceID(workspace)
+        projectID = self.getProjectID(projectName, workspace, skipPrjQuery)
+        url = self.url +"/workspaces/%s/projects/%s"%(wsId, projectID)
+        rv = self._request(url, typ="DELETE")
+        if rv.ok:
+            self._syncProjects = True
+            return RetVal.OK
+        else:
+            self.logger.warning("Error deleteProjet, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            return RetVal.ERR
+        
+    def deleteAllProjects(self, workspace):
+        curUser = self._loadedUserEmail
+        for user in self._APIusers:
+            self._loadUser(user["email"])
+            self.logger.info("Deleting all project from user %s"%user["email"])
+            prjs = self.getProjects(workspace)
+            idx = 0
+            numProjects = len(prjs)
+            for p in prjs:
+                msg = "deleting project %s (%d of %d)"%(p["name"], idx+1, numProjects)
+                self.logger.info(msg)
+                self.deleteProject(p["name"], workspace, skipPrjQuery=True)
+                idx+=1
+        self._loadUser(curUser)
+        
+    def wipeOutWorkspace(self, workspace):
+        curUser = self._loadedUserEmail
+        for user in self._APIusers:
+            self.logger.info("Deleting all entries from user %s"%user["email"])
+            self.deleteEntriesOfUser(user["email"] ,workspace)
+        
+        self.deleteAllProjects(workspace)
+#        self.deleteAllTags(workspace)
+#        self.deleteAllClients(workspace)
+        
+        self._loadUser(curUser)
+
+if __name__ == "__main__":
+    formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+    
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger = logging.getLogger("toggl2clockify")
+    logger.setLevel(logging.DEBUG)
+    if len(logger.handlers) == 0:
+        logger.addHandler(handler)
+
+    
+    c = ClockifyAPI(["XMRIwBCA7DZVjRhc", "XMS4+xCA7DZVjTVy", "XMVR6xCA7DZVjUrb", "XMVmmxCA7DZVjU8L", "XMXO49J4rgxSDDgr"], "markus.proeller@pieye.org")
+#    prj = c.getProjects("pieye workspace")
+    c.wipeOutWorkspace("pieye workspace")
+#    prjs = c.getProjects("pieye workspace")

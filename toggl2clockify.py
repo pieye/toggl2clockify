@@ -12,13 +12,52 @@ import json
 import argparse
 import dateutil
 import Clue
+import sys
+
+def query_yes_no(question, default="yes"):
+    """Ask a yes/no question via raw_input() and return their answer.
+
+    "question" is a string that is presented to the user.
+    "default" is the presumed answer if the user just hits <Enter>.
+        It must be "yes" (the default), "no" or None (meaning
+        an answer is required of the user).
+
+    The "answer" return value is True for "yes" or False for "no".
+    """
+    valid = {"yes": True, "y": True, "ye": True,
+             "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+#        try:
+#            input = raw_input
+#        except NameError:
+#            pass
+        choice = input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' "
+                             "(or 'y' or 'n').\n")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--skipClients", help="don't sync workspace clients", action="store_true")
 parser.add_argument("--skipProjects", help="don't sync workspace projects", action="store_true")
 parser.add_argument("--skipEntries", help="don't sync workspace time entries", action="store_true")
 parser.add_argument("--skipTags", help="don't sync tags", action="store_true")
+parser.add_argument("--doArchive", help="sync archiving of projects", action="store_true")
 parser.add_argument("--reqTimeout", help="sleep time between clockify web requests", type=float, default=0.01)
+parser.add_argument("--deleteEntries", help="delete all entries of given user")
 args = parser.parse_args()
 
 ok = False
@@ -27,9 +66,17 @@ formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
+f= open("log.txt", "wb")
+f.write(b"")
+f.close()
+
+fileHandler = logging.FileHandler("log.txt")
+fileHandler.setFormatter(formatter)
+
 logger = logging.getLogger("toggl2clockify")
 logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
+logger.addHandler(fileHandler)
 
 fName = os.path.abspath("config.json")
 try:
@@ -106,15 +153,25 @@ if ok:
         workspaces = cl.getTogglWorkspaces()
         logger.info("The following workspaces were found and will be imported now %s"%str(workspaces))
         
+    if args.deleteEntries != None:
+        question = "All entries for user %s in workspaces %s will be deleted. This cannot be undone, do you want to proceed"%(args.deleteEntries, workspaces)
+        if query_yes_no(question, default="no") == False:
+            sys.exit(0)
+        
     numWS = len(workspaces)
     idx = 1
     for ws in workspaces:
+        if args.deleteEntries != None:
+            logger.info("deleting all entries in workspace %s"%ws)
+            cl.clockify.deleteEntriesOfUser(args.deleteEntries, ws)
+            continue
+        
         logger.info("-------------------------------------------------------------")
         logger.info("Starting to import workspace '%s' (%d of %d)"%(ws, idx, numWS))
         logger.info("-------------------------------------------------------------")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 1 of 4: Import clients")
+        logger.info("Phase 1 of 5: Import clients")
         logger.info("-------------------------------------------------------------")
         if args.skipClients == False:
             numEntries, numOk, numSkips, numErr = cl.syncClients(ws)
@@ -126,11 +183,11 @@ if ok:
             logger.info("... skipping phase 1")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 1 of 4 (Import clients) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 1 of 5 (Import clients) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 2 of 4: Import tags")
+        logger.info("Phase 2 of 5: Import tags")
         logger.info("-------------------------------------------------------------")
         if args.skipTags == False:
             numEntries, numOk, numSkips, numErr = cl.syncTags(ws)
@@ -142,11 +199,11 @@ if ok:
             logger.info("... skipping phase 2")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 2 of 4 (Import tags) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 2 of 5 (Import tags) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 3 of 4: Import projects")
+        logger.info("Phase 3 of 5: Import projects")
         logger.info("-------------------------------------------------------------")
         if args.skipProjects == False:
             numEntries, numOk, numSkips, numErr = cl.syncProjects(ws)
@@ -158,23 +215,39 @@ if ok:
             logger.info("... skipping phase 3")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 3 of 4 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 3 of 5 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")        
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 4 of 4: Import time entries")
+        logger.info("Phase 4 of 5: Import time entries")
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
-            numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime)
+            numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True)
         else:
             numEntries=0
             numOk=0
             numSkips=0
             numErr=0
-            logger.info("... skipping phase 3")
+            logger.info("... skipping phase 4")
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 4 of 4 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 4 of 5 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("-------------------------------------------------------------")
+        
+        logger.info("-------------------------------------------------------------")
+        logger.info("Phase 5 of 5: Archiving projects")
+        logger.info("-------------------------------------------------------------")
+        if args.doArchive == True:
+            numEntries, numOk, numSkips, numErr = cl.syncProjectsArchive(ws)
+        else:
+            numEntries=0
+            numOk=0
+            numSkips=0
+            numErr=0
+            logger.info("... skipping phase 5")
+        
+        logger.info("-------------------------------------------------------------")
+        logger.info("Phase 5 of 5 (Archiving  projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
         
         logger.info("finished importing workspace '%s'"%(ws))
