@@ -326,10 +326,15 @@ class ClockifyAPI:
             self._loadUser(manager)
                    
         wsId = self.getWorkspaceID(workspace)
-        clId = self.getClientID(client, workspace)
+        clId = None
+        if not client is None:
+            clId = self.getClientID(client, workspace)
         url = self.url + "/workspaces/%s/projects"%wsId
-        params = {"name":name, "clientId": clId, "isPublic": isPublic, 
+        params = {"name":name, "isPublic": isPublic,
                   "billable": billable, "color": color}
+        if not clId is None:
+            params["clientId"] = clId
+
         if memberships != None:
             params["memberships"] = memberships.getData()
         if hourlyRate != None:
