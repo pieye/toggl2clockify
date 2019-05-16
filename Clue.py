@@ -89,7 +89,9 @@ class Clue:
             name = p["name"]
             if name not in clockifyPrjNames:
                 err = False
-                clientName = self.toggl.getClientName(p["cid"], workspace)
+                clientName = None
+                if "cid" in p:
+                    clientName = self.toggl.getClientName(p["cid"], workspace)
                 isPublic = not p["is_private"]
                 billable = p["billable"]
                 color = p["hex_color"]
