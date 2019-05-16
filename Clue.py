@@ -159,8 +159,8 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         numSkips = 0
         numErr = 0
         for p in prjs:
+            name = p["name"]
             if p["active"] == False:
-                name = p["name"]
                 self.logger.info("project %s is not active, trying to archive (%d of %d)"%(name, idx, numPrjs))
                 rv = self.clockify.archiveProject(name, workspace)
                 if rv == ClockifyAPI.RetVal.OK:
