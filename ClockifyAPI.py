@@ -608,24 +608,5 @@ class ClockifyAPI:
             self.logger.info("Deleting all entries from user %s"%user["email"])
             self.deleteEntriesOfUser(user["email"] ,workspace)
         
-        self.deleteAllProjects(workspace)
-#        self.deleteAllTags(workspace)
-#        self.deleteAllClients(workspace)
-        
+        self.deleteAllProjects(workspace)       
         self._loadUser(curUser)
-
-if __name__ == "__main__":
-    formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
-    
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    logger = logging.getLogger("toggl2clockify")
-    logger.setLevel(logging.DEBUG)
-    if len(logger.handlers) == 0:
-        logger.addHandler(handler)
-
-    
-    c = ClockifyAPI(["XMRIwBCA7DZVjRhc", "XMS4+xCA7DZVjTVy", "XMVR6xCA7DZVjUrb", "XMVmmxCA7DZVjU8L", "XMXO49J4rgxSDDgr"], "markus.proeller@pieye.org")
-#    prj = c.getProjects("pieye workspace")
-    c.wipeOutWorkspace("pieye workspace")
-#    prjs = c.getProjects("pieye workspace")
