@@ -202,7 +202,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                     userMail = self.toggl.getUserEmail(userID, self._workspace)
                 except:
                     if self._skipInvTogglUsers:
-                        self.logger.warning("user ID %s not in toggl workspace, skipping entry %s..."%(userID, description))    
+                        self.logger.warning("user ID %s (name=%s) not in toggl workspace, skipping entry %s..."%(userID, e["user"], description))
                         continue
                     else:
                         raise
