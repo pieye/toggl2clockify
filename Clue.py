@@ -197,15 +197,22 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 userID = e["uid"]
                 billable = e["is_billable"]
                 tagNames = e["tags"]
+                userName = e["user"]
                 
                 try:
                     userMail = self.toggl.getUserEmail(userID, self._workspace)
                 except:
-                    if self._skipInvTogglUsers:
-                        self.logger.warning("user ID %s (name=%s) not in toggl workspace, skipping entry %s..."%(userID, e["user"], description))
-                        continue
-                    else:
-                        raise
+                    try:
+                        cID = self.clockify.getUserIDByName(userName, self._workspace)
+                        userMail = self.clockify.getUserMailById(self, cID, self._workspace)
+                        self.logger.info("user ID %s (name=%s) not in toggl workspace, but found a match in clockify workspace %s..."%(userID, e["user"], userMail))
+                    except:
+                        if self._skipInvTogglUsers:
+                            self.logger.warning("user ID %s (name=%s) not in toggl workspace, skipping entry %s..."%(userID, userName, description))
+                            continue
+                        else:
+                            raise
+                            
                 rv, data = self.clockify.addEntry(start, description, projectName, userMail, self._workspace, 
                          timeZone="Z", end=end, billable=billable, tagNames=tagNames)
                 if rv == ClockifyAPI.RetVal.ERR:
