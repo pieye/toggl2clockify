@@ -225,6 +225,11 @@ class ClockifyAPI:
             self.clients = self.multiGetRequest(url)
             self._syncClients = False
             
+            self.logger.info("finsihed getting clockify clients, saving results to clockify_clients.json")
+            f = open("clockify_clients.json", "w")
+            f.write(json.dumps(self.clients, indent=2))
+            f.close()            
+            
             self._loadUser(curUser)
         return self.clients
     
@@ -256,7 +261,7 @@ class ClockifyAPI:
                 projects = self.multiGetRequest(url)
                 self.projects.extend(projects)
                    
-            self.logger.info("finsihed synchronizing clockify projects, saving results")
+            self.logger.info("finsihed synchronizing clockify projects, saving results to clockify_projects.json")
             f = open("clockify_projects.json", "w")
             f.write(json.dumps(self.projects, indent=2))
             f.close()
@@ -289,6 +294,11 @@ class ClockifyAPI:
             rv = self._request(url, typ="GET")
             self.users = rv.json()
             self._syncUsers = False
+            
+            self.logger.info("finsihed getting clockify users, saving results to clockify_users.json")
+            f = open("clockify_users.json", "w")
+            f.write(json.dumps(self.users, indent=2))
+            f.close()            
             
             self._loadUser(curUser)
         return self.users
@@ -375,6 +385,11 @@ class ClockifyAPI:
             url = self.url + "/workspaces/%s/tags"%wsId
             self.tags = self.multiGetRequest(url)
             self._syncTags = False
+            
+            self.logger.info("finsihed getting clockify tags, saving results to clockify_tags.json")
+            f = open("clockify_tags.json", "w")
+            f.write(json.dumps(self.tags, indent=2))
+            f.close()
             
             self._loadUser(curUser)
         return self.tags

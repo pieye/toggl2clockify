@@ -204,15 +204,15 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 except:
                     try:
                         cID = self.clockify.getUserIDByName(userName, self._workspace)
-                        userMail = self.clockify.getUserMailById(self, cID, self._workspace)
-                        self.logger.info("user ID %s (name=%s) not in toggl workspace, but found a match in clockify workspace %s..."%(userID, e["user"], userMail))
+                        self.logger.info("user '%s' found in clockify workspace as ID=%s"%(userName, cID))
+                        userMail = self.clockify.getUserMailById(cID, self._workspace)
+                        self.logger.info("user ID %s (name='%s') not in toggl workspace, but found a match in clockify workspace %s..."%(userID, e["user"], userMail))
                     except:
                         if self._skipInvTogglUsers:
-                            self.logger.warning("user ID %s (name=%s) not in toggl workspace, skipping entry %s..."%(userID, userName, description))
+                            self.logger.warning("user ID %s (name='%s') not in toggl workspace, skipping entry %s..."%(userID, userName, description))
                             continue
                         else:
                             raise
-                            
                 rv, data = self.clockify.addEntry(start, description, projectName, userMail, self._workspace, 
                          timeZone="Z", end=end, billable=billable, tagNames=tagNames)
                 if rv == ClockifyAPI.RetVal.ERR:
