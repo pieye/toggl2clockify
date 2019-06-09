@@ -79,7 +79,7 @@ class ClockifyAPI:
             url = self.url + "/user"
             rv = self._request(url)
             if rv.status_code != 200:
-                raise RuntimeError("error loading user, status code %s"%(str(rv.status_code)))
+                raise RuntimeError("error loading user (API token %s), status code %s"%(token, str(rv.status_code)))
                 
             rv = rv.json()
             user = {}
@@ -118,7 +118,7 @@ class ClockifyAPI:
                 url = self.url + "/user"
                 rv = self._request(url)
                 if rv.status_code != 200:
-                    raise RuntimeError("error loading user, status code %s"%(str(rv.status_code)))
+                    raise RuntimeError("error loading user %s, status code %s"%(user["email"], str(rv.status_code)))
                 userLoaded = True
                 self._syncTags = True
                 self._loadedUserEmail = user["email"]
@@ -131,6 +131,32 @@ class ClockifyAPI:
             rv = RetVal.OK
             
         return rv
+    
+    def multiGetRequest(self, url, idKey="id"):
+        headers={
+            'X-Api-Key': self.apiToken}
+        
+        curPage = 1
+        rvData = []
+        while True:
+            body = {"page": curPage, "page-size": 50}
+            rv = requests.get(url,headers=headers, params=body)
+            if rv.status_code == 200:
+                data = rv.json()
+                if len(data) < 50:
+                    rvData.extend(data)
+                    break
+                else:
+                    #check if we got new data
+                    chkID = data[0][idKey]
+                    if not any(d[idKey] == chkID for d in rvData):
+                        rvData.extend(data)
+                    else:
+                        break
+                curPage += 1
+            else:
+                raise RuntimeError("get on url %s failed with status code %d"%(url, rv.status_code))
+        return rvData
         
     def _request(self, url, body=None, typ="GET"):
         headers={
@@ -183,6 +209,7 @@ class ClockifyAPI:
                 rv = RetVal.ERR
         else:
             rv = RetVal.OK
+            self._syncClients = True
             
         self._loadUser(curUser)
             
@@ -195,16 +222,19 @@ class ClockifyAPI:
             
             wsId = self.getWorkspaceID(workspace)
             url = self.url + "/workspaces/%s/clients"%wsId
-            rv = self._request(url, typ="GET")
-            self.clients = rv.json()
+            self.clients = self.multiGetRequest(url)
             self._syncClients = False
             
             self._loadUser(curUser)
         return self.clients
     
-    def getClientID(self, client, workspace):
+    def getClientID(self, client, workspace, skipCliQuery=False):
         clId = None
-        clients = self.getClients(workspace)
+        if skipCliQuery:
+            clients = self.clients
+        else:
+            clients = self.getClients(workspace)
+            
         for c in clients:
             if c["name"] == client:
                 clId = c["id"]
@@ -223,27 +253,8 @@ class ClockifyAPI:
                 
                 wsId = self.getWorkspaceID(workspace)
                 url = self.url + "/workspaces/%s/projects"%wsId
-                pg=1
-                while True:
-                    params = {"page": pg}
-                    rv = self._request(url, body=params, typ="GET")
-                    prj0ID = -1
-                    if rv.ok:
-                        prjs = rv.json()
-                        self.logger.info("amount of projects: %d"%len(prjs))
-                        for p in prjs:
-                            curPIDs = [x["id"] for x in self.projects]
-                            if p["id"] not in curPIDs:
-                                self.projects.append(p)
-                        if len(prjs) < 50:
-                            break
-                        if prj0ID == prjs[0]["id"]:
-                            break
-                        prj0ID = prjs[0]["id"]
-                    else:
-                        self.logger.error("Error requesting workspace projects, status code=%d, msg=%s"%(rv.status_code, rv.reason))
-                        break
-                    pg+=1
+                projects = self.multiGetRequest(url)
+                self.projects.extend(projects)
                    
             self.logger.info("finsihed synchronizing clockify projects, saving results")
             f = open("clockify_projects.json", "w")
@@ -252,7 +263,6 @@ class ClockifyAPI:
             self._loadUser(curUser)
             self._syncProjects = False
             
-#        print (self.projects)
         return self.projects
 
     def getProjectID(self, project, workspace, skipPrjQuery=False):
@@ -363,11 +373,7 @@ class ClockifyAPI:
             self.tags = []
             wsId = self.getWorkspaceID(workspace)
             url = self.url + "/workspaces/%s/tags"%wsId
-            rv = self._request(url, typ="GET")
-            if rv.ok:
-                self.tags = rv.json()
-            else:
-                self.logger.error("Error requesting workspace tags, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            self.tags = self.multiGetRequest(url)
             self._syncTags = False
             
             self._loadUser(curUser)
@@ -608,5 +614,33 @@ class ClockifyAPI:
             self.logger.info("Deleting all entries from user %s"%user["email"])
             self.deleteEntriesOfUser(user["email"] ,workspace)
         
-        self.deleteAllProjects(workspace)       
+        self.deleteAllProjects(workspace)
+        self.deleteAllClients(workspace)
         self._loadUser(curUser)
+
+    def deleteClient(self, clientName, workspace, skipCliQuery=False):
+        wsId = self.getWorkspaceID(workspace)
+        clId = self.getClientID(clientName, workspace, skipCliQuery)
+        url = "https://api.clockify.me/api/workspaces/%s/clients/%s"%(wsId, clId)
+        rv = self._request(url, typ="DELETE")
+        if rv.ok:
+            self._syncClients = True
+            return RetVal.OK
+        else:
+            self.logger.warning("Error deleteClient, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            return RetVal.ERR
+        
+    def deleteAllClients(self, workspace):
+        curUser = self._loadedUserEmail
+        for user in self._APIusers:
+            self._loadUser(user["email"])
+            self.logger.info("Deleting all clients from user %s"%user["email"])
+            clis = self.getClients(workspace)
+            idx = 0
+            numClients = len(clis)
+            for c in clis:
+                msg = "deleting client %s (%d of %d)"%(c["name"], idx+1, numClients)
+                self.logger.info(msg)
+                self.deleteClient(c["name"], workspace, skipCliQuery=True)
+                idx+=1
+        self._loadUser(curUser)        
