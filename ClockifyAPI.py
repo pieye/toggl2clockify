@@ -79,7 +79,7 @@ class ClockifyAPI:
             url = self.url + "/user"
             rv = self._request(url)
             if rv.status_code != 200:
-                raise RuntimeError("error loading user")
+                raise RuntimeError("error loading user, status code %s"%(str(rv.status_code)))
                 
             rv = rv.json()
             user = {}
@@ -118,7 +118,7 @@ class ClockifyAPI:
                 url = self.url + "/user"
                 rv = self._request(url)
                 if rv.status_code != 200:
-                    raise RuntimeError("error loading user")
+                    raise RuntimeError("error loading user, status code %s"%(str(rv.status_code)))
                 userLoaded = True
                 self._syncTags = True
                 self._loadedUserEmail = user["email"]
