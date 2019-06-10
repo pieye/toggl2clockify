@@ -120,7 +120,6 @@ class ClockifyAPI:
                 if rv.status_code != 200:
                     raise RuntimeError("error loading user %s, status code %s"%(user["email"], str(rv.status_code)))
                 userLoaded = True
-                self._syncTags = True
                 self._loadedUserEmail = user["email"]
                 break
             
@@ -446,7 +445,7 @@ class ClockifyAPI:
             if projectName != None:
                 projectId = self.getProjectID(projectName, workspace)
             else:
-                self.logger.warning("no project in entry %s"%description)
+                self.logger.info("no project in entry %s"%description)
             
             startTime = start.isoformat()+timeZone
             if end != None:
