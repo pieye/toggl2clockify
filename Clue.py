@@ -191,7 +191,10 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 self._idx+=1
                 self.logger.info("adding entry %s, project: %s (%d of %d)"%(e["description"], e["project"], self._idx, totalCount))
                 start = self.timeToUtc(e["start"])
-                end = self.timeToUtc(e["end"])
+                if e["end"] != None:
+                    end = self.timeToUtc(e["end"])
+                else:
+                    end = None
                 description = e["description"]
                 projectName = e["project"]
                 userID = e["uid"]
