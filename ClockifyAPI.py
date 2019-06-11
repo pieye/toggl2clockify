@@ -492,6 +492,7 @@ class ClockifyAPI:
 #                            self.logger.info("entry diff @userID: %s %s"%(str(self.userID), str(d['userId'])))
                         if tagNames != None:
                             tagIdsRcv = d["tagIds"]
+                            tagIdsRcv = tagIdsRcv if tagIdsRcv != None else []
                             tagNamesRcv = []
                             for tagID in tagIdsRcv:
                                 tagNamesRcv.append(self.getTagName(tagID, workspace))
@@ -510,7 +511,7 @@ class ClockifyAPI:
                         data = rv.json()
                         rv = RetVal.OK
                     else:
-                        self.logger.warning("Error adding time entrs, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+                        self.logger.warning("Error adding time entrs, status code=%d, msg=%s"%(rv.status_code, rv.text))
                         rv = RetVal.ERR
                 else:
                     rv = RetVal.EXISTS
@@ -604,7 +605,7 @@ class ClockifyAPI:
             self._syncProjects = True
             return RetVal.OK
         else:
-            self.logger.warning("Error deleteProjet, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            self.logger.warning("Error deleteProject, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             return RetVal.ERR
         
     def deleteAllProjects(self, workspace):
