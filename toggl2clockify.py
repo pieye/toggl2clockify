@@ -57,7 +57,7 @@ parser.add_argument("--skipEntries", help="don't sync workspace time entries", a
 parser.add_argument("--skipTags", help="don't sync tags", action="store_true")
 parser.add_argument("--doArchive", help="sync archiving of projects", action="store_true")
 parser.add_argument("--reqTimeout", help="sleep time between clockify web requests", type=float, default=0.01)
-parser.add_argument("--deleteEntries", help="delete all entries of given user")
+parser.add_argument("--deleteEntries", nargs='+', help="delete all entries of given users")
 args = parser.parse_args()
 
 ok = False
@@ -126,6 +126,13 @@ if ok:
             logger.error("could not parse 'StartTime' correctly make sure it is a ISO 8601 time string")
             ok = False
 
+    if ok and "EndTime" in data:
+        try:
+            endTime = dateutil.parser.parse(data["EndTime"])
+        except Exception as e:
+            logger.error("could not parse 'EndTime' correctly make sure it is a ISO 8601 time string")
+            ok = False
+
     if ok:
         if "Workspaces" in data:
             workspaces = data["Workspaces"]
@@ -163,7 +170,8 @@ if ok:
     for ws in workspaces:
         if args.deleteEntries != None:
             logger.info("deleting all entries in workspace %s"%ws)
-            cl.clockify.deleteEntriesOfUser(args.deleteEntries, ws)
+            for user in args.deleteEntries:
+                cl.clockify.deleteEntriesOfUser(user, ws)
             continue
         
         logger.info("-------------------------------------------------------------")
@@ -222,7 +230,7 @@ if ok:
         logger.info("Phase 4 of 5: Import time entries")
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
-            numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True)
+            numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True, until=endTime)
         else:
             numEntries=0
             numOk=0

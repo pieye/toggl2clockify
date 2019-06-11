@@ -229,8 +229,10 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
             self._numEntries += len(entries)
     
     
-    def syncEntries(self, workspace, startTime, skipInvTogglUsers=False):
-        until = datetime.datetime.now()
+    def syncEntries(self, workspace, startTime, skipInvTogglUsers=False, until=None):
+        if until is None:
+            until = datetime.datetime.now()
+
         self._idx = 0
         self._numSkips = 0
         self._numOk = 0
