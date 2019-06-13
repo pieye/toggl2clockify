@@ -187,7 +187,10 @@ class ClockifyAPI:
     def _getWorkspaces(self):
         url = self.url + "/workspaces"
         rv = self._request(url)
-        self.workspaces = rv.json()
+        if rv.status_code == 200:
+            self.workspaces = rv.json()
+        else:
+            raise RuntimeError("Querying workspaces for user %s failed, status code=%d, msg=%s"%(self._APIusers[0]["email"], rv.status_code, rv.text))
         return self.workspaces
     
     def addClient(self, name, workspace):
