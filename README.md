@@ -25,7 +25,7 @@ Suppose your toggl API key is ABCDEF and you want to migrate **yourself** (clock
 ```
 
 ### Configure clockify admin mail address
-Also you have to enter the mail address of **one clokify workspace admin**. Suppose you have admin rights on the clockify workspace and your mail is **me@info.org**
+You have to configure the mail address of **one clockify workspace admin**. Suppose you have admin rights on the clockify workspace and your clockify account mail is **me@info.org**
 
 ```bash
 {
@@ -67,7 +67,7 @@ Entering an end time until when you want to import entries is optional. If not g
 }
 ```
 
-### Configure workspace of import
+### Configure workspace of import (optional)
 
 The last step is to configure the workspace to be imported. You can also give a list of multplie workspaces, but this is an **untested** feature.
 Make sure that the toggl and clockify workspace names match **exactly** (no spaces, UPPER/lower case).
