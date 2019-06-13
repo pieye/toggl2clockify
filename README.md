@@ -3,13 +3,22 @@ Migrate data from toggl to clockify
 
 **No warranty that the tools works as expected. Read the following lines CAREFULLY and TEST it on a non productive system!**
 
+# Quick start
+
+Migration consists of five steps (which are described in detail below):
+1. Prepare clockify workspace 
+2. Modify **config.json**
+3. Run the migration tool **bin/toggl2clockify.exe** (or **python toggl2clockify.py** on other platforms)
+4. After the import go through **log.txt** and search for "WARNING" entries (if you're unsure post a bug report)
+5. Finalize migration (archive projects in clockify which were archived on toggl) by running **bin/toggl2clockify.exe --skipClients --skipProjects --skipEntries --skipTags --doArchive**
+
 # Migration Guide
 
 ## Prepare clockify workspace
 ![Prepare clockify workspace](clockify_workspace.png)
 
 ## Configure import process
-Open the file config.json.
+Open the file config.json. The file already contains all required keywords (**TogglKey** , **ClockifyKeys**, **ClockifyAdmin** and **StartTime**).
 
 ### Configure toggl and clockify API keys
 You need your **toggl** API key (https://toggl.com/app/profile) and the **clockify** API keys of **all users** to be migrated (every clockify user has to open https://clockify.me/user/settings ).
