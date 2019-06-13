@@ -53,7 +53,19 @@ Some valid examples:
 }
 ```
 
-At the moment there is no support for EndTime. All entries from **"StartTime" until now** are imported. Feel free to contribute or fill in a bug report.
+### Configure end time of import (optional)
+Entering an end time until when you want to import entries is optional. If not given, all time entries until NOW are imported. The EndTime string follows the same formation rules as the StartTime string.
+
+
+```bash
+{
+  "TogglKey": "ABCDEF",
+  "ClockifyKeys": ["123456", "XYZCDF"],
+  "ClockifyAdmin": "me@info.org",
+  "StartTime": "2019-01-19"
+  "EndTime": "2019-05-14"
+}
+```
 
 ### Configure workspace of import
 
