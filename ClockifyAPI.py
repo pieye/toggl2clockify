@@ -87,6 +87,10 @@ class ClockifyAPI:
             user["token"] = token
             user["email"] = rv["email"]
             user["id"] = rv["id"]
+            
+            if rv["status"].upper() != "ACTIVE":
+                raise RuntimeError("user '%s' is not an active user in clockify. Please activate the user for the migartion process"%user["email"])
+            
             self._APIusers.append(user)
             
             if rv["email"] == adminEmail:
