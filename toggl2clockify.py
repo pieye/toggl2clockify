@@ -13,6 +13,7 @@ import argparse
 import dateutil
 import Clue
 import sys
+import datetime
 
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
