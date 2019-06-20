@@ -132,6 +132,8 @@ if ok:
         except Exception as e:
             logger.error("could not parse 'EndTime' correctly make sure it is a ISO 8601 time string")
             ok = False
+    else:
+        logger.info("'EndTime' not found in config file importing all entries until now")
 
     if ok:
         if "Workspaces" in data:
@@ -227,7 +229,7 @@ if ok:
         logger.info("-------------------------------------------------------------")        
         
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 4 of 5: Import time entries")
+        logger.info("Phase 4 of 5: Import time entries from %s until %s"%(str(startTime), str(endTime)))
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
             numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True, until=endTime)
