@@ -13,6 +13,7 @@ import argparse
 import dateutil
 import Clue
 import sys
+import datetime
 
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
@@ -133,6 +134,9 @@ if ok:
         except Exception as e:
             logger.error("could not parse 'EndTime' correctly make sure it is a ISO 8601 time string")
             ok = False
+    else:
+        logger.info("'EndTime' not found in config file importing all entries until now")
+        endTime = datetime.datetime.now()
 
     if ok:
         if "Workspaces" in data:
@@ -247,7 +251,11 @@ if ok:
 
 
         logger.info("-------------------------------------------------------------")
+<<<<<<< HEAD
         logger.info("Phase 6 of 7: Import time entries")
+=======
+        logger.info("Phase 4 of 5: Import time entries from %s until %s"%(str(startTime), str(endTime)))
+>>>>>>> 4a48294085b937eafa99fec4cb8a10fe4eb19087
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
             numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True, until=endTime)
