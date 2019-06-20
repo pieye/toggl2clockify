@@ -134,6 +134,7 @@ if ok:
             ok = False
     else:
         logger.info("'EndTime' not found in config file importing all entries until now")
+        endTime = datetime.datetime.now()
 
     if ok:
         if "Workspaces" in data:
