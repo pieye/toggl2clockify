@@ -49,6 +49,26 @@ class Clue:
             
         return numTags, numOk, numSkips, numErr
         
+    def syncGroups(self, workspace):
+        groups = self.toggl.getWorkspaceGroups(workspace)
+        numGroups = len(groups)
+        numOk = 0
+        numSkips = 0
+        numErr = 0
+        idx = 0
+        for t in groups:
+            self.logger.info("adding group %s (%d of %d groups)"%(t["name"], idx+1, numGroups))
+                                   
+            rv = self.clockify.addUserGroup(t["name"], workspace)
+            if rv == ClockifyAPI.RetVal.EXISTS:
+                self.logger.info("User Group %s already exists, skip..."%t["name"])
+                numSkips+=1
+            else:
+                numErr+=1
+            idx+=1
+            
+        return numGroups, numOk, numSkips, numErr
+
     def syncClients(self, workspace):
         clients = self.toggl.getWorkspaceClients(workspace)
         
@@ -78,6 +98,8 @@ class Clue:
         clockifyPrjNames = []
         for pr in clockifyPrjs:
             clockifyPrjNames.append(pr["name"])
+
+        wsId = self.clockify.getWorkspaceID(workspace)
         
         idx = 0
         numPrjs = len(prjs)
@@ -86,7 +108,28 @@ class Clue:
         numErr = 0
         for p in prjs:
             self.logger.info ("adding project %s (%d of %d projects)"%(p["name"], idx+1, numPrjs))
+
+            # Prepare Group assignment to Projects
+            wgroups = self.toggl.getWorkspaceGroups(workspace)
+            pgroups = self.toggl.getProjectGroups(p["name"], workspace)
+            self.logger.info("Groups assigned in Toggl: %s"%pgroups)
+
+            if pgroups == None:
+                pgroups = []
+                wgroupIds = []
+            else:
+                # Load all Workspace Groups in simple array
+                wgroupIds = []
+                for wgroup in wgroups:
+                    wgroupIds.append(wgroup["id"])
+                # Add group name to toggl Groups array
+                for pgroup in pgroups:
+                    for wgroup in wgroups:
+                        if pgroup["group_id"] == wgroup["id"]:
+                            pgroup["name"] = wgroup["name"]
+
             name = p["name"]
+            pId = self.clockify.getProjectID(p["name"], workspace)
             if name not in clockifyPrjNames:
                 err = False
                 clientName = None
@@ -98,7 +141,7 @@ class Clue:
                 members = self.toggl.getProjectUsers(p["name"], workspace)
                 if members == None:
                     members = []
-                        
+
                 m = ClockifyAPI.MemberShip(self.clockify)
                 for member in members:
                     try:
@@ -120,12 +163,17 @@ class Clue:
                         err = True
                         break
     
-                if err == False:
-                    
+                if err == False:                    
+
                     rv = self.clockify.addProject(name, clientName, workspace, isPublic, billable, 
                            color, memberships=m, manager=m.getManagerUserMail())
-                    if rv == ClockifyAPI.RetVal.OK:
-                        self.logger.info("...ok")
+                    if (rv == ClockifyAPI.RetVal.OK) and (pgroups == []):
+                        self.logger.info("...ok, done.")
+                        numOk+=1
+                    if (rv == ClockifyAPI.RetVal.OK) and (pgroups != []):
+                        self.logger.info("...ok, now processing User Group assignments:")
+                        #try?
+                        self.clockify.addGroupsToProject(workspace, wsId, pId, wgroupIds, pgroups)
                         numOk+=1
                     elif rv == ClockifyAPI.RetVal.EXISTS:
                         self.logger.info("project %s already exists, skip..."%name)
@@ -141,6 +189,11 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                     numErr+=1
             else:
                 self.logger.info("project %s already exists, skip..."%name)
+
+                # Add groups even if project exist.
+                #if pgroups != []:
+                #    self.clockify.addGroupsToProject(workspace, wsId, pId, wgroupIds, pgroups)
+
                 numSkips+=1
             idx += 1
             

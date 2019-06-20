@@ -30,6 +30,7 @@ class TogglAPI:
         self._syncClients = True
         self._syncUsers = True
         self._syncTags = True
+        self._syncGroups = True
         
     def _request(self, url, params=None):
         string=self.apiToken+':api_token'
@@ -71,6 +72,20 @@ class TogglAPI:
         
         return self.tags
     
+    def getWorkspaceGroups(self, workspaceName):
+        if self._syncGroups == True:
+            self.groups = []
+            wsId = self.getWorkspaceID(workspaceName)       
+            url = r"https://www.toggl.com/api/v8/workspaces/%d/groups"%wsId
+            req = self._request(url)
+            if req.ok:
+                self.groups = req.json()
+            else:
+                raise RuntimeError("Error getting toggl workspace groups, status code=%d, msg=%s"%(req.status_code, req.reason))
+            self._syncGroups = False
+        
+        return self.groups
+
     def getWorkspaceUsers(self, workspaceName):
         if self._syncUsers == True:
             wsId = self.getWorkspaceID(workspaceName)       
@@ -180,6 +195,12 @@ class TogglAPI:
         response=self._request(url)
         return response.json()
     
+    def getProjectGroups(self, projectName, workspaceName):
+        prjId = self.getProjectID(projectName, workspaceName)
+        url = "https://www.toggl.com/api/v8/projects/%d/project_groups"%prjId
+        response=self._request(url)
+        return response.json()
+
     def getClientName(self, clientID, workspace):
         clients = self.getWorkspaceClients(workspace)
         cName = None

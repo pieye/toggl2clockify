@@ -63,10 +63,12 @@ class ClockifyAPI:
     def __init__(self, apiToken, adminEmail="", reqTimeout=0.01):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
+        self.urlDeprecated = 'https://api.clockify.me/api/'
         self._syncClients = True
         self._syncUsers = True
         self._syncProjects = True
         self._syncTags = True
+        self._syncGroups = True
         self._adminEmail = adminEmail
         self._reqTimeout = reqTimeout
         
@@ -87,8 +89,8 @@ class ClockifyAPI:
             user["token"] = token
             user["email"] = rv["email"]
             user["id"] = rv["id"]
-            
-            if rv["status"].upper() != "ACTIVE":
+
+            if (rv["status"].upper() != "ACTIVE") and (rv["status"].upper() != "PENDING_EMAIL_VERIFICATION"):
                 raise RuntimeError("user '%s' is not an active user in clockify. Please activate the user for the migartion process"%user["email"])
             
             self._APIusers.append(user)
@@ -267,7 +269,7 @@ class ClockifyAPI:
                 projects = self.multiGetRequest(url)
                 self.projects.extend(projects)
                    
-            self.logger.info("finsihed synchronizing clockify projects, saving results to clockify_projects.json")
+            self.logger.info("finished synchronizing clockify projects, saving results to clockify_projects.json")
             f = open("clockify_projects.json", "w")
             f.write(json.dumps(self.projects, indent=2))
             f.close()
@@ -308,6 +310,16 @@ class ClockifyAPI:
             
             self._loadUser(curUser)
         return self.users
+    
+    def getUsersInProject(self, wsId, pId):
+        userIds = []
+        url = self.urlDeprecated + "/workspaces/%s/projects/%s/users"%(wsId, pId)
+
+        rv = self._request(url, typ="GET")
+        userIds = rv.json()
+        self.logger.info("Finished getting users already assigned to the project.")
+
+        return userIds
 
     def getUserIDByName(self, user, workspace):
         uId = None
@@ -380,6 +392,115 @@ class ClockifyAPI:
         self._loadUser(curUser)
         
         return rv
+
+    #using deprecated API entry point?
+    def addGroupsToProject(self, wsName, wsId, pId, wsGroupIds, pGroups):
+
+        # API fields to POST: {userIds = [], userGroupIds = []}
+        # From: https://clockify.github.io/clockify_api_docs/#operation--workspaces--workspaceId--projects--projectId--team-post
+
+        url = self.urlDeprecated + "/workspaces/%s/projects/%s/team"%(wsId,pId)
+
+        userIds = []
+        userGroupIds = []
+
+        pUsers = self.getUsersInProject(wsId, pId)
+
+        if pUsers == None:
+            userIds = []
+        else:
+            for pUser in pUsers:
+                # try for errors?
+                userIds.append(pUser["id"])
+
+        for pGroup in pGroups:
+            try:
+                pg = wsGroupIds.index(pGroup["group_id"])
+            except Exception as e:
+                self.logger.warning ("Group id %d not found in toggl workspace, msg=%s"%(pGroup["group_id"] ,str(e)))
+                break
+        
+        for pGroup in pGroups:
+            # try for errors?
+            gId = self.getUserGroupID(pGroup["name"],wsName)
+            userGroupIds.append(gId)
+        
+        params = {"userIds": userIds, 
+                  "userGroupIds": userGroupIds }
+        
+        rv = self._request(url, body=params, typ="POST")
+        if (rv.status_code == 201) or (rv.status_code == 200):
+            rv = RetVal.OK
+        elif rv.status_code == 400:
+            rv = RetVal.EXISTS
+        elif rv.status_code == 403:
+            rv = RetVal.FORBIDDEN
+        else:
+            self.logger.warning("Error adding Groups to Project, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            rv = RetVal.ERR
+        
+        return rv
+    
+    # using deprecated API entry point
+    def getUserGroups(self, workspace):
+        if self._syncGroups == True:
+            curUser = self._loadedUserEmail
+            self._loadAdmin()
+            
+            self.userGroups = []
+            wsId = self.getWorkspaceID(workspace)
+            url = self.urlDeprecated + "/workspaces/%s/userGroups"%wsId
+            self.userGroups = self.multiGetRequest(url)
+            self._syncGroups = False
+            
+            self.logger.info("Finished getting clockify groups, saving results to clockify_groups.json")
+            f = open("clockify_groups.json", "w")
+            f.write(json.dumps(self.userGroups, indent=2))
+            f.close()
+            
+            self._loadUser(curUser)
+        return self.userGroups
+    
+    #using deprecated API entry point
+    def addUserGroup(self, groupName, workspace):
+        curUser = self._loadedUserEmail
+        self._loadAdmin()
+        
+        wsId = self.getWorkspaceID(workspace)
+        url = self.urlDeprecated + "/workspaces/%s/userGroups/"%wsId
+        params = {"name": groupName}
+        rv = self._request(url, body=params, typ="POST")
+        if rv.status_code == 201:
+            self._syncGroups = True
+            rv = RetVal.OK
+        elif rv.status_code == 400:
+            rv = RetVal.EXISTS
+        else:
+            self.logger.warning("Error adding group %s, status code=%d, msg=%s"%(groupName, rv.status_code, rv.reason))
+            rv = RetVal.ERR
+        
+        self._loadUser(curUser)
+        return rv
+
+    def getUserGroupName(self, userGroupID, workspace):
+        uName = None
+        userGroups = self.getUserGroups(workspace)
+        for u in userGroups:
+            if u["id"] == userGroupID:
+                uName = u["name"]
+        if uName == None:
+            raise RuntimeError("User Group %s not found in workspace %s"%(userGroupID, workspace))
+        return uName
+    
+    def getUserGroupID(self, userGroupName, workspace):
+        uId = None
+        userGroups = self.getUserGroups(workspace)
+        for u in userGroups:
+            if u["name"] == userGroupName:
+                uId = u["id"]
+        if uId == None:
+            raise RuntimeError("User Group %s not found in workspace %s"%(userGroupName, workspace))
+        return uId
     
     def getTags(self, workspace):
         if self._syncTags == True:
@@ -392,7 +513,7 @@ class ClockifyAPI:
             self.tags = self.multiGetRequest(url)
             self._syncTags = False
             
-            self.logger.info("finsihed getting clockify tags, saving results to clockify_tags.json")
+            self.logger.info("Finished getting clockify tags, saving results to clockify_tags.json")
             f = open("clockify_tags.json", "w")
             f.write(json.dumps(self.tags, indent=2))
             f.close()
@@ -463,7 +584,7 @@ class ClockifyAPI:
                           "billable":billable,
                           "description": description
                       }
-
+            
             if projectName != None:
                 params["projectId"] = projectId
             if end != None:
@@ -474,7 +595,7 @@ class ClockifyAPI:
                     tid = self.getTagID(tag, workspace)
                     tagIDs.append(tid)
                 params["tagIds"] = tagIDs
-                
+
             rv, entr = self.getTimeEntryForUser(userMail, workspace, description, projectName,
                                          start, timeZone=timeZone)
             
