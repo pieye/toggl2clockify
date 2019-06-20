@@ -251,11 +251,7 @@ if ok:
 
 
         logger.info("-------------------------------------------------------------")
-<<<<<<< HEAD
-        logger.info("Phase 6 of 7: Import time entries")
-=======
-        logger.info("Phase 4 of 5: Import time entries from %s until %s"%(str(startTime), str(endTime)))
->>>>>>> 4a48294085b937eafa99fec4cb8a10fe4eb19087
+        logger.info("Phase 6 of 7: Import time entries from %s until %s"%(str(startTime), str(endTime)))
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
             numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True, until=endTime)
