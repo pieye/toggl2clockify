@@ -13,6 +13,7 @@ import pytz
 import datetime
 import logging
 import sys
+import json
 
 class Clue:
     def __init__(self, clockifyKey, clockifyAdmin, togglKey, clockifyReqTimeout=1):
@@ -91,37 +92,119 @@ class Clue:
             idx+=1
             
         return compl, numOk, numSkips, numErr
+
+    # does not sync user assignments!
+    def syncTasks(self, workspace):
+        tasks = self.toggl.getWorkspaceTasks(workspace)
+        wsId = self.clockify.getWorkspaceID(workspace)
+        
+        idx = 0
+        compl = len(tasks)
+        numOk = 0
+        numSkips = 0
+        numErr = 0
+     
+        tProjs = self.toggl.projects
+        cProjs = self.clockify.projects 
+
+        self.logger.warning("Number of Toggl projects found: %s"%(len(tProjs)))
+        self.logger.warning("Number of Clockify projects found: %s"%(len(cProjs)))
+
+        for task in tasks:
+            self.logger.info("Adding tasks %s (%d of %d tasks)..."%(task["name"], idx+1, compl))
+
+            # Find which Clockify project should the task be assigned to:
+            projectId = None
+            for tProj in tProjs:
+                if task["pid"] == tProj["id"]:
+                    projectName = tProj["name"]
+                    for cProj in cProjs:
+                        if cProj["name"] == projectName:
+                            projectId = cProj["id"]
+                            self.logger.info("Clockify project ID found: %s, for project %s"%(projectId, projectName))
+
+            # Convert Toggl duration (seconds) into Clockify "Estimate" string (e.g. PT1H30M15S):
+            time = task["estimated_seconds"]
+            if time > 0:
+                #days = time // (24*3600)
+                #concatD = True if (days > 0) else False
+                #time = time % (24 * 3600)
+                hours = time // (3600)
+                #concatH = True if (hours > 0) or (concatD) else False
+                concatH = True if (hours > 0) else False
+                time = time % (3600)
+                minutes = time // (60)
+                concatM = True if (minutes > 0) or (concatH) else False
+                time = time % (60)
+                seconds = time
+                #estimatedTime = "PT" + ["", "%dD"%days][concatD] + ["", "%dH"%hours][concatH] + ["", "%dM"%minutes][concatM] +"%dS"%seconds
+                estimatedTime = "PT" + ["", "%dH"%hours][concatH] + ["", "%dM"%minutes][concatM] +"%dS"%seconds
+                self.logger.info("Estimate time: %s"%estimatedTime)
+            else:
+                estimatedTime = None;
+
+            # Add the task to Clockify:
+            rv = self.clockify.addTask(wsId, task["name"], projectId, estimatedTime)
+            #rv = ClockifyAPI.RetVal.OK
+
+            if rv == ClockifyAPI.RetVal.EXISTS:
+                self.logger.info("task %s already exists, skip..."%task["name"])
+                numSkips+=1
+            elif rv == ClockifyAPI.RetVal.OK:
+                numOk+=1
+                self.logger.info(" ... done.")
+            else:
+                numErr+=1
+            idx+=1
+            
+        return compl, numOk, numSkips, numErr
             
     def syncProjects(self, workspace):
         prjs = self.toggl.getWorkspaceProjects(workspace)
-        clockifyPrjs = self.clockify.getProjects(workspace)
-        clockifyPrjNames = []
-        for pr in clockifyPrjs:
-            clockifyPrjNames.append(pr["name"])
+        self.logger.info("Number of total Projects in Toggl: %d"%(len(prjs)))
+
+        # getWorkspaceProjects() uses Clockify's Working API entry point, which gets all Projects without iterating all users, much quicker
+        clockifyPrjs = self.clockify.getWorkspaceProjects(workspace)
+
+        clockifyPrjNames = {cPrj["name"] for cPrj in clockifyPrjs}
+
+        # Check if it's the first run (cPrjs = 0)
+        # Get only new projects on Toggl to update in Clockify
+        if len(clockifyPrjs) >= 1:
+            updTPrjs = [tPrj for tPrj in prjs if tPrj["name"] not in clockifyPrjNames]
+            self.logger.info("Found projects in Clockify, skipping matching ones in Toggl:")
+            for updTPrj in updTPrjs:
+                self.logger.info("Found different Project: %s"%updTPrj["name"])
+            prjs = updTPrjs
+
+        self.logger.info("Number of new Projects in Toggl: %d"%(len(prjs)))
+        self.logger.info(" Number of total Projects in Clockify: %d, begin sync:"%(len(clockifyPrjs)))
 
         wsId = self.clockify.getWorkspaceID(workspace)
+
+        # Load all Workspace Groups in simple array
+        wgroups = self.toggl.getWorkspaceGroups(workspace)
+        wgroupIds = []
+        for wgroup in wgroups:
+            wgroupIds.append(wgroup["id"])
         
         idx = 0
         numPrjs = len(prjs)
         numOk = 0
         numSkips = 0
         numErr = 0
+
         for p in prjs:
-            self.logger.info ("adding project %s (%d of %d projects)"%(p["name"], idx+1, numPrjs))
+            self.logger.info ("Adding project %s (%d of %d projects)"%(p["name"], idx+1, numPrjs))
 
             # Prepare Group assignment to Projects
-            wgroups = self.toggl.getWorkspaceGroups(workspace)
             pgroups = self.toggl.getProjectGroups(p["name"], workspace)
-            self.logger.info("Groups assigned in Toggl: %s"%pgroups)
+            #self.logger.info(" Groups assigned in Toggl: %s"%pgroups)
 
             if pgroups == None:
                 pgroups = []
                 wgroupIds = []
-            else:
-                # Load all Workspace Groups in simple array
-                wgroupIds = []
-                for wgroup in wgroups:
-                    wgroupIds.append(wgroup["id"])
+            else:              
                 # Add group name to toggl Groups array
                 for pgroup in pgroups:
                     for wgroup in wgroups:
@@ -129,7 +212,7 @@ class Clue:
                             pgroup["name"] = wgroup["name"]
 
             name = p["name"]
-            pId = self.clockify.getProjectID(p["name"], workspace)
+            #pId = self.clockify.getProjectID(p["name"], workspace)
             if name not in clockifyPrjNames:
                 err = False
                 clientName = None
@@ -168,19 +251,20 @@ class Clue:
                     rv = self.clockify.addProject(name, clientName, workspace, isPublic, billable, 
                            color, memberships=m, manager=m.getManagerUserMail())
                     if (rv == ClockifyAPI.RetVal.OK) and (pgroups == []):
-                        self.logger.info("...ok, done.")
+                        self.logger.info(" ...ok, done.")
                         numOk+=1
                     if (rv == ClockifyAPI.RetVal.OK) and (pgroups != []):
-                        self.logger.info("...ok, now processing User Group assignments:")
+                        self.logger.info(" ...ok, now processing User Group assignments:")
                         #try?
                         self.clockify.addGroupsToProject(workspace, wsId, pId, wgroupIds, pgroups)
+                        self.logger.info(" ...ok, done.")
                         numOk+=1
                     elif rv == ClockifyAPI.RetVal.EXISTS:
-                        self.logger.info("project %s already exists, skip..."%name)
+                        self.logger.info("... project %s already exists, skip..."%name)
                         numSkips+=1
                     elif rv == ClockifyAPI.RetVal.FORBIDDEN:
                         manager = m.getManagerUserMail()
-                        self.logger.error("Could not add project %s. %s was project admin in toggl, but seems to \
+                        self.logger.error(" Could not add project %s. %s was project admin in toggl, but seems to \
 be no admin in clockify. Check your workspace settings and grant admin rights to %s."%(name, manager, manager))
                         sys.exit(1)
                     else:
@@ -188,7 +272,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 else:
                     numErr+=1
             else:
-                self.logger.info("project %s already exists, skip..."%name)
+                self.logger.info(" ...project %s already exists, skip..."%name)
 
                 # Add groups even if project exist.
                 #if pgroups != []:
