@@ -56,6 +56,7 @@ parser.add_argument("--skipClients", help="don't sync workspace clients", action
 parser.add_argument("--skipProjects", help="don't sync workspace projects", action="store_true")
 parser.add_argument("--skipEntries", help="don't sync workspace time entries", action="store_true")
 parser.add_argument("--skipTags", help="don't sync tags", action="store_true")
+parser.add_argument("--skipTasks", help="don't sync tasks", action="store_true")
 parser.add_argument("--skipGroups", help="don't sync groups", action="store_true")
 parser.add_argument("--doArchive", help="sync archiving of projects", action="store_true")
 parser.add_argument("--reqTimeout", help="sleep time between clockify web requests", type=float, default=0.01)
@@ -225,7 +226,7 @@ if ok:
             numOk=0
             numSkips=0
             numErr=0
-            logger.info("... skipping phase x")
+            logger.info("... skipping phase 3")
         
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 3 of 7 (Import groups) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
@@ -247,7 +248,17 @@ if ok:
         logger.info("Phase 4 of 7 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")        
         
-        # Add Phase 5: Tasks
+        logger.info("-------------------------------------------------------------")
+        logger.info("Phase 5 of 7: Import tasks")
+        logger.info("-------------------------------------------------------------")
+        if args.skipTasks == False:
+            numEntries, numOk, numSkips, numErr = cl.syncTasks(ws)
+        else:
+            numEntries=0
+            numOk=0
+            numSkips=0
+            numErr=0
+            logger.info("... skipping phase 5")
 
 
         logger.info("-------------------------------------------------------------")
