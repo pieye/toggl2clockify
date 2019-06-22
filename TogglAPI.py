@@ -31,6 +31,7 @@ class TogglAPI:
         self._syncUsers = True
         self._syncTags = True
         self._syncGroups = True
+        self._syncTasks = True
         
     def _request(self, url, params=None):
         string=self.apiToken+':api_token'
@@ -123,7 +124,20 @@ class TogglAPI:
             f.close()
         
         return self.projects
-            
+
+    def getWorkspaceTasks(self, workspaceName):
+        if self._syncTasks == True:
+            wsId = self.getWorkspaceID(workspaceName)       
+            url = r"https://www.toggl.com/api/v8/workspaces/%d/tasks"%wsId
+            req = self._request(url)
+            self.tasks = req.json()
+            self._syncTasks = False
+
+            f = open("toggl_tasks.json", "w")
+            f.write(json.dumps(self.tasks, indent=2))
+            f.close()
+        
+        return self.tasks            
     
     def getReports(self, workspaceName, since, until, cb, timeZone="CET"):
 #        entries = []
