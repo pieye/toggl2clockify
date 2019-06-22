@@ -58,24 +58,6 @@ class MemberShip:
     def getData(self):
         return self.memberShip
 
-class ClockifyProject:
-    def __init__(self, name, workspaceId, id, estimate):
-        self.id = id
-        self.name = name
-        self.workspaceId = workspaceId
-        self.estimate = estimate
-
-    def to_json(self):
-        return json.dumps(self.__dict__)
-
-    @classmethod
-    def from_json(cls, json_str):
-        json_dict = json.loads(json_str)
-        return cls(**json_dict)
-    
-    def __str__(self):
-        return '{{"id" = "{0}","workspaceId" = "{1}", "name" = {2}, "estimate" = {3}}}'.format(self.id, self.workspaceId, self.name, self.estimate)
-
 class ClockifyAPI:
     def __init__(self, apiToken, adminEmail="", reqTimeout=0.01):
         self.logger = logging.getLogger('toggl2clockify')
@@ -259,23 +241,29 @@ class ClockifyAPI:
             self._loadUser(curUser)
         return self.clients
 
-    def getTasks(self, workspace):
-        if self._syncTasks == True:
-            curUser = self._loadedUserEmail
-            self._loadAdmin()
-            
-            wsId = self.getWorkspaceID(workspace)
-            url = self.url + "/workspaces/%s/tasks"%wsId
-            self.tasks = self.multiGetRequest(url)
-            self._syncTasks = False
-            
-            self.logger.info("finished getting clockify tasks, saving results to clockify_tasks.json")
-            f = open("clockify_tasks.json", "w")
-            f.write(json.dumps(self.tasks, indent=2))
-            f.close()            
-            
-            self._loadUser(curUser)
-        return self.tasks
+    def getTasksOnProject(self, workspace, projectName):
+        curUser = self._loadedUserEmail
+        self._loadAdmin()
+
+        wsId = self.getWorkspaceID(workspace)
+        pId = self.getProjectID(projectName, workspace)
+
+        url = self.url + "/workspaces/%s/projects/%s/tasks"%(wsId, pId)
+        self.pTasks = self.multiGetRequest(url)
+        
+        self._loadUser(curUser)
+
+        return self.pTasks
+    
+    def getTaskIdFromTasks(self, taskName, pTasks):
+        tId = None
+        if pTasks != None:
+            for t in pTasks:
+                if t["name"] == taskName:
+                    tId = t["id"]
+        if tId == None:
+            raise RuntimeError("Task %s not found."%(taskName))
+        return tId
     
     def getClientID(self, client, workspace, skipCliQuery=False):
         clId = None
@@ -647,7 +635,7 @@ class ClockifyAPI:
         return rv
 
     def addEntry(self, start, description, projectName, userMail, workspace, 
-                 timeZone="Z", end=None, billable=False, tagNames=None):
+                 timeZone="Z", end=None, billable=False, tagNames=None, taskName=None):
         rv = self._loadUser(userMail)
         data = None
         
@@ -658,9 +646,22 @@ class ClockifyAPI:
             if projectName != None:
                 if (self._syncProjects == True):
                     projectId = self.getProjectID(projectName, workspace, skipPrjQuery=True)
+                    if taskName != None:
+                        pTasks = self.getTasksOnProject(workspace, projectName)
+                        taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
+                        self.logger.info("Found task %s in project %s"%(taskName, projectName))
+                    else:
+                        taskId = None
                 else:
-                    projectId = self.getProjectID(projectName, workspace)                   
+                    projectId = self.getProjectID(projectName, workspace)
+                    if taskName != None:
+                        pTasks = self.getTasksOnProject(workspace, projectName)
+                        taskId = self.getTaskIdFromTasks(taskName, pTasks)
+                        self.logger.info("Found task %s in project %s"%(taskName, projectName))                   
+                    else:
+                        taskId = None
             else:
+                taskId = None
                 self.logger.info("no project in entry %s"%description)
             
             startTime = start.isoformat()+timeZone
@@ -675,6 +676,8 @@ class ClockifyAPI:
             
             if projectName != None:
                 params["projectId"] = projectId
+            if taskId != None:
+                params["taskId"] = taskId
             if end != None:
                 params["end"] = end
             if tagNames != None:
@@ -722,6 +725,7 @@ class ClockifyAPI:
                 
                 if entr == []:
                     rv = self._request(url, body=params, typ="POST")
+                    self.logger.info("Adding entry: %s"%(json.dumps(params, indent=2)))                
                     
                     if rv.ok:
                         data = rv.json()
