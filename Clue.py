@@ -338,7 +338,9 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 billable = e["is_billable"]
                 tagNames = e["tags"]
                 userName = e["user"]
-                
+                #tTaskId = e["tid"]
+                taskName = e["task"]
+
                 try:
                     userMail = self.toggl.getUserEmail(userID, self._workspace)
                 except:
@@ -354,7 +356,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                         else:
                             raise
                 rv, data = self.clockify.addEntry(start, description, projectName, userMail, self._workspace, 
-                         timeZone="Z", end=end, billable=billable, tagNames=tagNames)
+                         timeZone="Z", end=end, billable=billable, tagNames=tagNames, taskName=taskName)
                 if rv == ClockifyAPI.RetVal.ERR:
                     self._numErr+=1
                 elif rv == ClockifyAPI.RetVal.EXISTS:
@@ -377,7 +379,6 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         self._numEntries = 0
         self._workspace = workspace
         self._skipInvTogglUsers = skipInvTogglUsers
-        
         
         self.toggl.getReports(workspace, startTime, until, self.onNewReports)
                 
