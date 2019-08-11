@@ -162,7 +162,7 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
     - color
     - membership
 
-    - NOT MIRGATED: tasks, hourlyRate, estimate
+    - NOT MIRGATED: hourlyRate, estimate
 
 - The following time entry attributes are migrated:
     - start
@@ -173,6 +173,6 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
     - end
     - tagIds
     
-    - NOT MIRGATED: taskId, timeInterval (not sure what purpose this serves), isLocked
+    - NOT MIRGATED: timeInterval (not sure what purpose this serves), isLocked
 - All tasks of the workspace
 - User groups
