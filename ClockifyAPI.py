@@ -122,7 +122,11 @@ class ClockifyAPI:
         return self._loadUser(self._adminEmail)
         
     def _loadUser(self, userMail):
-        if userMail.lower() == self._loadedUserEmail.lower():
+        mailChk = self._loadedUserEmail
+        if mailChk == None:
+            mailChk = ""
+
+        if userMail.lower() == mailChk.lower():
             return  RetVal.OK
         
         userLoaded = False

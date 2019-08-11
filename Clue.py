@@ -52,6 +52,9 @@ class Clue:
         
     def syncGroups(self, workspace):
         groups = self.toggl.getWorkspaceGroups(workspace)
+        if groups == None:
+            groups = []
+
         numGroups = len(groups)
         numOk = 0
         numSkips = 0
@@ -96,6 +99,8 @@ class Clue:
     # does not sync user assignments!
     def syncTasks(self, workspace):
         tasks = self.toggl.getWorkspaceTasks(workspace)
+        if tasks == None:
+            tasks = []
         wsId = self.clockify.getWorkspaceID(workspace)
         
         idx = 0
@@ -178,6 +183,9 @@ class Clue:
 
         # Load all Workspace Groups in simple array
         wgroups = self.toggl.getWorkspaceGroups(workspace)
+        if wgroups == None:
+            wgroups = []
+        
         wgroupIds = []
         for wgroup in wgroups:
             wgroupIds.append(wgroup["id"])
