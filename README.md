@@ -91,6 +91,24 @@ Make sure that the toggl and clockify workspace names match **exactly** (no spac
 }
 ```
 
+### Clockify fallback user mail
+
+If there are time entries in the toggl workspace that don't match to any clockify user, you can define a **fallback user mail on the clockify workspace**.
+All time entries with no clockify user match will than be assigned to this user on the clockify workspace.
+Let's assume that the fallback user has a mail address fallback@company.com and a ClockifyKeys "ABCDEF", than you have to add the Clockify API key to the **ClockifyKeys** and the 
+mail address of the fallback user to the key **FallbackUserMail**:
+
+```bash
+{
+  "TogglKey": "ABCDEF",
+  "ClockifyKeys": ["123456", "XYZCDF", "ABCDEF"],
+  "ClockifyAdmin": "me@info.org",
+  "StartTime": "2019-01-19",
+  "FallbackUserMail": "fallback@company.com",
+  "Workspaces": ["myWorkspace"]
+}
+```
+
 
 ## Run the import
 
@@ -156,7 +174,5 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
     - tagIds
     
     - NOT MIRGATED: taskId, timeInterval (not sure what purpose this serves), isLocked
-    
-## What is not migrated
-- Tasks
+- All tasks of the workspace
 - User groups

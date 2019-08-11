@@ -59,7 +59,7 @@ class MemberShip:
         return self.memberShip
 
 class ClockifyAPI:
-    def __init__(self, apiToken, adminEmail="", reqTimeout=0.01):
+    def __init__(self, apiToken, adminEmail="", reqTimeout=0.01, fallbackUserMail=None):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
         self.urlWorking = 'https://api.clockify.me/api/'
@@ -71,9 +71,11 @@ class ClockifyAPI:
         self._syncTasks = True
         self._adminEmail = adminEmail
         self._reqTimeout = reqTimeout
+        self.fallbackUserMail = fallbackUserMail
         
         self._APIusers = []
         adminFound = False
+        fallbackFound = False
         for token in apiToken:
             self.logger.info("testing clockify APIKey %s"%token)
             
@@ -95,13 +97,21 @@ class ClockifyAPI:
             
             self._APIusers.append(user)
             
-            if rv["email"] == adminEmail:
+            if rv["email"].lower() == adminEmail.lower():
                 adminFound = True
+                
+            if self.fallbackUserMail != None:
+                if rv["email"].lower() == self.fallbackUserMail.lower():
+                    fallbackFound = True
+            
             
             self.logger.info("...ok, key resolved to email %s"%rv["email"])
             
         if not adminFound:
             raise RuntimeError("admin mail address was given as %s but not found in clockify API tokens"%adminEmail)
+
+        if fallbackFound==False and self.fallbackUserMail!=None:
+            raise RuntimeError("falback user mail address was given as %s but not found in clockify API tokens"%self.fallbackUserMail)
             
         self._loadedUserEmail = None
         self._loadUser(self._APIusers[0]["email"])
@@ -112,12 +122,12 @@ class ClockifyAPI:
         return self._loadUser(self._adminEmail)
         
     def _loadUser(self, userMail):
-        if userMail == self._loadedUserEmail:
+        if userMail.lower() == self._loadedUserEmail.lower():
             return  RetVal.OK
         
         userLoaded = False
         for user in self._APIusers:
-            if user["email"] == userMail:
+            if user["email"].lower() == userMail.lower():
                 self.apiToken = user["token"]
                 self.email = user["email"]
                 self.userID = user["id"]
@@ -644,22 +654,13 @@ class ClockifyAPI:
             url = self.url + "/workspaces/%s/time-entries"%wsId
             
             if projectName != None:
-                if (self._syncProjects == True):
-                    projectId = self.getProjectID(projectName, workspace, skipPrjQuery=True)
-                    if taskName != None:
-                        pTasks = self.getTasksOnProject(workspace, projectName)
-                        taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
-                        self.logger.info("Found task %s in project %s"%(taskName, projectName))
-                    else:
-                        taskId = None
+                projectId = self.getProjectID(projectName, workspace, skipPrjQuery=self._syncProjects)
+                if taskName != None:
+                    pTasks = self.getTasksOnProject(workspace, projectName)
+                    taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
+                    self.logger.info("Found task %s in project %s"%(taskName, projectName))
                 else:
-                    projectId = self.getProjectID(projectName, workspace)
-                    if taskName != None:
-                        pTasks = self.getTasksOnProject(workspace, projectName)
-                        taskId = self.getTaskIdFromTasks(taskName, pTasks)
-                        self.logger.info("Found task %s in project %s"%(taskName, projectName))                   
-                    else:
-                        taskId = None
+                    taskId = None
             else:
                 taskId = None
                 self.logger.info("no project in entry %s"%description)

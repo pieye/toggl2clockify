@@ -16,7 +16,7 @@ import sys
 import json
 
 class Clue:
-    def __init__(self, clockifyKey, clockifyAdmin, togglKey, clockifyReqTimeout=1):
+    def __init__(self, clockifyKey, clockifyAdmin, togglKey, clockifyReqTimeout=1, fallbackUserMail=None):
         self.logger = logging.getLogger('toggl2clockify')
         
         self.logger.info("testing toggl API key %s"%togglKey)
@@ -27,7 +27,7 @@ class Clue:
             self.logger.error("something went wrong with your toggl key, msg=%s"%str(e))
             raise
         
-        self.clockify = ClockifyAPI.ClockifyAPI(clockifyKey, clockifyAdmin, reqTimeout=clockifyReqTimeout)
+        self.clockify = ClockifyAPI.ClockifyAPI(clockifyKey, clockifyAdmin, reqTimeout=clockifyReqTimeout, fallbackUserMail=fallbackUserMail)
         
     def syncTags(self, workspace):
         tags = self.toggl.getWorkspaceTags(workspace)
@@ -107,8 +107,8 @@ class Clue:
         tProjs = self.toggl.projects
         cProjs = self.clockify.projects 
 
-        self.logger.warning("Number of Toggl projects found: %s"%(len(tProjs)))
-        self.logger.warning("Number of Clockify projects found: %s"%(len(cProjs)))
+        self.logger.info("Number of Toggl projects found: %s"%(len(tProjs)))
+        self.logger.info("Number of Clockify projects found: %s"%(len(cProjs)))
 
         for task in tasks:
             self.logger.info("Adding tasks %s (%d of %d tasks)..."%(task["name"], idx+1, compl))
@@ -126,18 +126,13 @@ class Clue:
             # Convert Toggl duration (seconds) into Clockify "Estimate" string (e.g. PT1H30M15S):
             time = task["estimated_seconds"]
             if time > 0:
-                #days = time // (24*3600)
-                #concatD = True if (days > 0) else False
-                #time = time % (24 * 3600)
                 hours = time // (3600)
-                #concatH = True if (hours > 0) or (concatD) else False
                 concatH = True if (hours > 0) else False
                 time = time % (3600)
                 minutes = time // (60)
                 concatM = True if (minutes > 0) or (concatH) else False
                 time = time % (60)
                 seconds = time
-                #estimatedTime = "PT" + ["", "%dD"%days][concatD] + ["", "%dH"%hours][concatH] + ["", "%dM"%minutes][concatM] +"%dS"%seconds
                 estimatedTime = "PT" + ["", "%dH"%hours][concatH] + ["", "%dM"%minutes][concatM] +"%dS"%seconds
                 self.logger.info("Estimate time: %s"%estimatedTime)
             else:
@@ -145,7 +140,6 @@ class Clue:
 
             # Add the task to Clockify:
             rv = self.clockify.addTask(wsId, task["name"], projectId, estimatedTime)
-            #rv = ClockifyAPI.RetVal.OK
 
             if rv == ClockifyAPI.RetVal.EXISTS:
                 self.logger.info("task %s already exists, skip..."%task["name"])
@@ -246,7 +240,7 @@ class Clue:
                         err = True
                         break
     
-                if err == False:                    
+                if err == False:
 
                     rv = self.clockify.addProject(name, clientName, workspace, isPublic, billable, 
                            color, memberships=m, manager=m.getManagerUserMail())
@@ -338,7 +332,6 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 billable = e["is_billable"]
                 tagNames = e["tags"]
                 userName = e["user"]
-                #tTaskId = e["tid"]
                 taskName = e["task"]
 
                 try:
@@ -353,6 +346,9 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                         if self._skipInvTogglUsers:
                             self.logger.warning("user ID %s (name='%s') not in toggl workspace, skipping entry %s..."%(userID, userName, description))
                             continue
+                        elif self.clockify.fallbackUserMail != None:
+                            userMail = self.clockify.fallbackUserMail
+                            self.logger.info("user '%s' not found in clockify workspace, using fallback user '%s'"%(userName, userMail))
                         else:
                             raise
                 rv, data = self.clockify.addEntry(start, description, projectName, userMail, self._workspace, 

@@ -157,9 +157,15 @@ if ok:
             if type(clockifyAdmin) != type(""):
                 logger.error("json entry 'ClockifyAdmin' must be a string")
                 ok = False
-           
+
+    if ok:
+        if "FallbackUserMail" in data:
+            fallbackUserMail = data["FallbackUserMail"]
+        else:
+            fallbackUserMail = None
+
 if ok:
-    cl = Clue.Clue(clockifyTokens, clockifyAdmin, togglKey, clockifyReqTimeout=args.reqTimeout)
+    cl = Clue.Clue(clockifyTokens, clockifyAdmin, togglKey, clockifyReqTimeout=args.reqTimeout, fallbackUserMail=fallbackUserMail)
     
     if workspaces == None:
         logger.info("no workspaces specified in json file, I'm trying to import all toggl workspaces...")
