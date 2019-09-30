@@ -15,6 +15,7 @@ import Clue
 import sys
 import datetime
 
+
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
 
@@ -38,10 +39,10 @@ def query_yes_no(question, default="yes"):
 
     while True:
         sys.stdout.write(question + prompt)
-#        try:
-#            input = raw_input
-#        except NameError:
-#            pass
+        #        try:
+        #            input = raw_input
+        #        except NameError:
+        #            pass
         choice = input().lower()
         if default is not None and choice == '':
             return valid[default]
@@ -50,6 +51,7 @@ def query_yes_no(question, default="yes"):
         else:
             sys.stdout.write("Please respond with 'yes' or 'no' "
                              "(or 'y' or 'n').\n")
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--skipClients", help="don't sync workspace clients", action="store_true")
@@ -69,7 +71,7 @@ formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
-f= open("log.txt", "wb")
+f = open("log.txt", "wb")
 f.write(b"")
 f.close()
 
@@ -86,41 +88,41 @@ try:
     f = open(fName, "r")
     ok = True
 except:
-    logger.error("file %s not found"%(fName))
-    
+    logger.error("file %s not found" % (fName))
+
 if ok:
     try:
         data = json.load(f)
         ok = True
     except Exception as e:
-        logger.error("reading content of json file %s failed with msg: %s"%(fName, str(e)))
+        logger.error("reading content of json file %s failed with msg: %s" % (fName, str(e)))
         ok = False
-    
+
 if ok:
     if "ClockifyKeys" not in data:
-        logger.error("json entry 'ClockifyKeys' missing in file %s"%fName)
+        logger.error("json entry 'ClockifyKeys' missing in file %s" % fName)
         ok = False
-        
+
     if ok:
         clockifyTokens = data["ClockifyKeys"]
-        if type(clockifyTokens) != type ([]):
+        if type(clockifyTokens) != type([]):
             logger.error("json entry 'ClockifyKeys' must be a list of strings")
             ok = False
-            
+
     if ok:
         if "TogglKey" not in data:
-            logger.error("json entry 'TogglKey' missing in file %s"%fName)
+            logger.error("json entry 'TogglKey' missing in file %s" % fName)
             ok = False
-            
+
     if ok:
         togglKey = data["TogglKey"]
         if type(togglKey) != type(""):
             logger.error("json entry 'TogglKey' must be a strings")
             ok = False
-            
+
     if ok:
         if "StartTime" not in data:
-            logger.error("json entry 'StartTime' missing in file %s"%fName)
+            logger.error("json entry 'StartTime' missing in file %s" % fName)
             ok = False
     if ok:
         try:
@@ -147,10 +149,10 @@ if ok:
                 ok = False
         else:
             workspaces = None
-            
+
     if ok:
         if "ClockifyAdmin" not in data:
-            logger.error("json entry 'ClockifyAdmin' missing in file %s"%fName)
+            logger.error("json entry 'ClockifyAdmin' missing in file %s" % fName)
             ok = False
         else:
             clockifyAdmin = data["ClockifyAdmin"]
@@ -165,139 +167,146 @@ if ok:
             fallbackUserMail = None
 
 if ok:
-    cl = Clue.Clue(clockifyTokens, clockifyAdmin, togglKey, clockifyReqTimeout=args.reqTimeout, fallbackUserMail=fallbackUserMail)
-    
-    if workspaces == None:
+    cl = Clue.Clue(clockifyTokens, clockifyAdmin, togglKey, clockifyReqTimeout=args.reqTimeout,
+                   fallbackUserMail=fallbackUserMail)
+
+    if workspaces is None:
         logger.info("no workspaces specified in json file, I'm trying to import all toggl workspaces...")
         workspaces = cl.getTogglWorkspaces()
-        logger.info("The following workspaces were found and will be imported now %s"%str(workspaces))
-        
-    if args.deleteEntries != None:
-        question = "All entries for user %s in workspaces %s will be deleted. This cannot be undone, do you want to proceed"%(args.deleteEntries, workspaces)
-        if query_yes_no(question, default="no") == False:
+        logger.info("The following workspaces were found and will be imported now %s" % str(workspaces))
+
+    if args.deleteEntries is not None:
+        question = "All entries for user %s in workspaces %s will be deleted. " \
+                   "This cannot be undone, do you want to proceed" % (args.deleteEntries, workspaces)
+        if not query_yes_no(question, default="no"):
             sys.exit(0)
-        
+
     numWS = len(workspaces)
     idx = 1
     for ws in workspaces:
-        if args.deleteEntries != None:
-            logger.info("deleting all entries in workspace %s"%ws)
+        if args.deleteEntries is not None:
+            logger.info("deleting all entries in workspace %s" % ws)
             for user in args.deleteEntries:
                 cl.clockify.deleteEntriesOfUser(user, ws)
             continue
-        
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Starting to import workspace '%s' (%d of %d)"%(ws, idx, numWS))
+        logger.info("Starting to import workspace '%s' (%d of %d)" % (ws, idx, numWS))
         logger.info("-------------------------------------------------------------")
-        
+
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 1 of 7: Import clients")
         logger.info("-------------------------------------------------------------")
-        if args.skipClients == False:
+        if not args.skipClients:
             numEntries, numOk, numSkips, numErr = cl.syncClients(ws)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 1")
-        
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 1 of 7 (Import clients) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 1 of 7 (Import clients) completed (entries=%d, ok=%d, skips=%d, err=%d)" % (
+                    numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
-        
+
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 2 of 7: Import tags")
         logger.info("-------------------------------------------------------------")
-        if args.skipTags == False:
+        if not args.skipTags:
             numEntries, numOk, numSkips, numErr = cl.syncTags(ws)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 2")
-        
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 2 of 7 (Import tags) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 2 of 7 (Import tags) completed (entries=%d, ok=%d, skips=%d, err=%d)" % (
+                    numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
 
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 3 of 7: Import groups")
         logger.info("-------------------------------------------------------------")
-        if args.skipGroups == False:
+        if not args.skipGroups:
             numEntries, numOk, numSkips, numErr = cl.syncGroups(ws)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 3")
-        
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 3 of 7 (Import groups) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 3 of 7 (Import groups) completed (entries=%d, ok=%d, skips=%d, err=%d)" % (
+                    numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
-        
+
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 4 of 7: Import projects")
         logger.info("-------------------------------------------------------------")
-        if args.skipProjects == False:
+        if not args.skipProjects:
             numEntries, numOk, numSkips, numErr = cl.syncProjects(ws)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 3")
-             
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 4 of 7 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
-        logger.info("-------------------------------------------------------------")        
-        
+        logger.info("Phase 4 of 7 (Import projects) completed (entries=%d, ok=%d, skips=%d, err=%d)" % (
+                    numEntries, numOk, numSkips, numErr))
+        logger.info("-------------------------------------------------------------")
+
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 5 of 7: Import tasks")
         logger.info("-------------------------------------------------------------")
-        if args.skipTasks == False:
+        if not args.skipTasks:
             numEntries, numOk, numSkips, numErr = cl.syncTasks(ws)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 5")
 
-
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 6 of 7: Import time entries from %s until %s"%(str(startTime), str(endTime)))
+        logger.info("Phase 6 of 7: Import time entries from %s until %s" % (str(startTime), str(endTime)))
         logger.info("-------------------------------------------------------------")
-        if args.skipEntries == False:
+        if not args.skipEntries:
             numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True, until=endTime)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 4")
-        
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 6 of 7 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 6 of 7 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)" % (
+                    numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
-        
+
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 7 of 7: Archiving projects")
         logger.info("-------------------------------------------------------------")
-        if args.doArchive == True:
+        if args.doArchive:
             numEntries, numOk, numSkips, numErr = cl.syncProjectsArchive(ws)
         else:
-            numEntries=0
-            numOk=0
-            numSkips=0
-            numErr=0
+            numEntries = 0
+            numOk = 0
+            numSkips = 0
+            numErr = 0
             logger.info("... skipping phase 5")
-        
+
         logger.info("-------------------------------------------------------------")
-        logger.info("Phase 7 of 7 (Archiving  projects) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
+        logger.info("Phase 7 of 7 (Archiving  projects) completed (entries=%d, ok=%d, skips=%d, err=%d)" % (
+                    numEntries, numOk, numSkips, numErr))
         logger.info("-------------------------------------------------------------")
-        
-        logger.info("finished importing workspace '%s'"%(ws))
-        idx+=1
+
+        logger.info("finished importing workspace '%s'" % (ws))
+        idx += 1
