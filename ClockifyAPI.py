@@ -658,7 +658,7 @@ class ClockifyAPI:
             url = self.url + "/workspaces/%s/time-entries"%wsId
             
             if projectName != None:
-                projectId = self.getProjectID(projectName, workspace, skipPrjQuery=self._syncProjects)
+                projectId = self.getProjectID(projectName, workspace)
                 if taskName != None:
                     pTasks = self.getTasksOnProject(workspace, projectName)
                     taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
