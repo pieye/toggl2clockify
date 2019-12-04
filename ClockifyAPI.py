@@ -685,6 +685,8 @@ class ClockifyAPI:
                 params["taskId"] = taskId
             if end != None:
                 params["end"] = end
+            else:
+                params["end"] = startTime
             if tagNames != None:
                 tagIDs = []
                 for tag in tagNames:
@@ -883,4 +885,4 @@ class ClockifyAPI:
                 self.logger.info(msg)
                 self.deleteClient(c["name"], workspace, skipCliQuery=True)
                 idx+=1
-        self._loadUser(curUser)        
+        self._loadUser(curUser)
