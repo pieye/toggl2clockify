@@ -62,7 +62,7 @@ class ClockifyAPI:
     def __init__(self, apiToken, adminEmail="", reqTimeout=0.01, fallbackUserMail=None):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
-        self.urlWorking = 'https://api.clockify.me/api/'
+        self.urlWorking = 'https://api.clockify.me/api/v1'
         self._syncClients = True
         self._syncUsers = True
         self._syncProjects = True
@@ -255,12 +255,11 @@ class ClockifyAPI:
             self._loadUser(curUser)
         return self.clients
 
-    def getTasksOnProject(self, workspace, projectName):
+    def getTasksFromProjectID(self, workspace, pId):
         curUser = self._loadedUserEmail
         self._loadAdmin()
 
         wsId = self.getWorkspaceID(workspace)
-        pId = self.getProjectID(projectName, workspace)
 
         url = self.url + "/workspaces/%s/projects/%s/tasks"%(wsId, pId)
         self.pTasks = self.multiGetRequest(url)
@@ -279,7 +278,23 @@ class ClockifyAPI:
             raise RuntimeError("Task %s not found."%(taskName))
         return tId
     
-    def getClientID(self, client, workspace, skipCliQuery=False):
+    def getClientName(self, clientID, workspace, skipCliQuery=False):
+        clientName = None
+        if skipCliQuery:
+            clients = self.clients
+        else:
+            clients = self.getClients(workspace)
+            
+        for c in clients:
+            if c["id"] == clientID:
+                clientName = c["name"]
+
+        if clientName == None:
+            raise RuntimeError("Client %s not found in workspace %s"%(clientID, workspace))
+
+        return clientName
+
+    def getClientID(self, clientName, workspace, skipCliQuery=False):
         clId = None
         if skipCliQuery:
             clients = self.clients
@@ -327,7 +342,7 @@ class ClockifyAPI:
                 self.projects = []
                 
                 wsId = self.getWorkspaceID(workspace)
-                url = self.urlWorking + "/workspaces/%s/projects/"%wsId
+                url = self.urlWorking + "/workspaces/%s/projects"%wsId
 
                 self.projects = self.multiGetRequest(url)
                 self._syncProjects = False
@@ -341,19 +356,30 @@ class ClockifyAPI:
 
         return self.projects
 
-    def getProjectID(self, project, workspace, skipPrjQuery=False):
-        pId = None
+    def getProjectID(self, project, client, workspace, skipPrjQuery=False):
+        result = None
         if skipPrjQuery:
             projects = self.projects
         else:
             projects = self.getProjects(workspace, skipPrjQuery)
             
+        if client: 
+            clientID = self.getClientID(client)
+        else:
+            clientID = None
+
+
+        #find first project (no client)
+        #find perfect match project (client + project match)
         for p in projects:
-            if p["name"] == project:
-                pId = p["id"]
-        if pId == None:
-            raise RuntimeError("Project %s not found in workspace %s"%(project, workspace))
-        return pId
+            if p["name"] == project and p["clientId"] == clientID:
+                result = p["id"]
+                break
+                                   
+        if result == None:
+            raise RuntimeError("Project %s with client %s not found in workspace %s" %
+                               (project, client, workspace))
+        return result
 
     def getUsers(self, workspace):
         if self._syncUsers == True:
@@ -648,7 +674,7 @@ class ClockifyAPI:
         self._loadUser(curUser)
         return rv
 
-    def addEntry(self, start, description, projectName, userMail, workspace, 
+    def addEntry(self, start, description, projectName, clientName, userMail, workspace, 
                  timeZone="Z", end=None, billable=False, tagNames=None, taskName=None):
         rv = self._loadUser(userMail)
         data = None
@@ -658,9 +684,9 @@ class ClockifyAPI:
             url = self.url + "/workspaces/%s/time-entries"%wsId
             
             if projectName != None:
-                projectId = self.getProjectID(projectName, workspace, skipPrjQuery=self._syncProjects)
+                projectId = self.getProjectID(projectName, clientName, workspace)
                 if taskName != None:
-                    pTasks = self.getTasksOnProject(workspace, projectName)
+                    pTasks = self.getTasksFromProjectID(workspace, projectId)
                     taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
                     self.logger.info("Found task %s in project %s"%(taskName, projectName))
                 else:
@@ -685,14 +711,16 @@ class ClockifyAPI:
                 params["taskId"] = taskId
             if end != None:
                 params["end"] = end
+            else:
+                params["end"] = startTime
             if tagNames != None:
                 tagIDs = []
                 for tag in tagNames:
                     tid = self.getTagID(tag, workspace)
                     tagIDs.append(tid)
-                params["tagIds"] = tagIDs
+                params["tagIds"] = tagIDs            
 
-            rv, entr = self.getTimeEntryForUser(userMail, workspace, description, projectName,
+            rv, entr = self.getTimeEntryForUser(userMail, workspace, description, projectName, clientName,
                                          start, timeZone=timeZone)
             
             if rv == RetVal.OK:
@@ -746,7 +774,7 @@ class ClockifyAPI:
         return rv, data
     
     def getTimeEntryForUser(self, userMail, workspace, description, 
-                            projectName, start, timeZone="Z"):
+                            projectName, clientName, start, timeZone="Z", ):
         data = None
         rv = self._loadUser(userMail)
         
@@ -754,8 +782,8 @@ class ClockifyAPI:
             wsId = self.getWorkspaceID(workspace)
             uId = self.userID
             
-            if projectName != None:
-                prjID = self.getProjectID(projectName, workspace)
+            if projectName != None and clientName != None:
+                prjID = self.getProjectID(projectName, clientName, workspace)
             if start != None:
                 start = start.isoformat()+timeZone
                 
@@ -776,10 +804,10 @@ class ClockifyAPI:
             
         return rv, data
     
-    def archiveProject(self, projectName, workspace, skipPrjQuery=False):
+    def archiveProject(self, projectName, clientName, workspace, skipPrjQuery=False):
         wsId = self.getWorkspaceID(workspace)
-        pID = self.getProjectID(projectName, workspace, skipPrjQuery=skipPrjQuery)
-        url = "https://api.clockify.me/api/workspaces/%s/projects/%s/archive"%(wsId, pID)
+        pID = self.getProjectID(projectName, clientName, workspace, skipPrjQuery=skipPrjQuery)
+        url = self.urlWorking + "/workspaces/%s/projects/%s/archive"%(wsId, pID)
         rv = self._request(url, typ="GET")
         if rv.status_code == 200:
             rv = RetVal.OK
@@ -791,7 +819,7 @@ class ClockifyAPI:
     
     def deleteEntriesOfUser(self, userMail, workspace):
         while True:
-            rv, entries = self.getTimeEntryForUser(userMail, workspace, "", None, None, "")
+            rv, entries = self.getTimeEntryForUser(userMail, workspace, "", None, None, None, "")
             numEntries = 0
             if rv == RetVal.OK:
                 curUser = self._loadedUserEmail
@@ -821,9 +849,9 @@ class ClockifyAPI:
             self.logger.warning("Error deleteEntry, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             return RetVal.ERR
 
-    def deleteProject(self, projectName, workspace, skipPrjQuery=False):
+    def deleteProject(self, projectID, workspace, skipPrjQuery=False):
         wsId = self.getWorkspaceID(workspace)
-        projectID = self.getProjectID(projectName, workspace, skipPrjQuery)
+        
         url = self.url +"/workspaces/%s/projects/%s"%(wsId, projectID)
         rv = self._request(url, typ="DELETE")
         if rv.ok:
@@ -842,7 +870,9 @@ class ClockifyAPI:
             idx = 0
             numProjects = len(prjs)
             for p in prjs:
-                msg = "deleting project %s (%d of %d)"%(p["name"], idx+1, numProjects)
+                #get client:
+                clientName = self.getClientName(p["clientId"])
+                msg = "deleting project %s (%d of %d)"%(p["name"] + "|" + clientName, idx+1, numProjects)
                 self.logger.info(msg)
                 self.deleteProject(p["name"], workspace, skipPrjQuery=True)
                 idx+=1
@@ -861,7 +891,7 @@ class ClockifyAPI:
     def deleteClient(self, clientName, workspace, skipCliQuery=False):
         wsId = self.getWorkspaceID(workspace)
         clId = self.getClientID(clientName, workspace, skipCliQuery)
-        url = "https://api.clockify.me/api/workspaces/%s/clients/%s"%(wsId, clId)
+        url = self.urlWorking + "/workspaces/%s/clients/%s"%(wsId, clId)
         rv = self._request(url, typ="DELETE")
         if rv.ok:
             self._syncClients = True

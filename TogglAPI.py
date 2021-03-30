@@ -106,8 +106,14 @@ class TogglAPI:
             url = r"https://www.toggl.com/api/v8/workspaces/%d/clients"%wsId
             req = self._request(url)
             self.clients = req.json()
+            if self.clients is None:
+                self.clients = []
             self._syncClients = False
         
+            f = open("toggl_clients.json", "w")
+            f.write(json.dumps(self.clients, indent=2))
+            f.close()
+
         return self.clients
     
     def getWorkspaceProjects(self, workspaceName):
