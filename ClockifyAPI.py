@@ -178,10 +178,11 @@ class ClockifyAPI:
         return rvData
         
     def _request(self, url, body=None, typ="GET"):
-        headers={
-            'X-Api-Key': self.apiToken}
+        headers={'X-Api-Key': self.apiToken}
         if typ == "GET":
             response=requests.get(url,headers=headers, params=body)
+        elif typ == "PUT":
+            response=requests.put(url,headers=headers, json=body)
         elif typ == "POST":
             response=requests.post(url,headers=headers, json=body)
         elif typ == "DELETE":
@@ -274,11 +275,11 @@ class ClockifyAPI:
             for t in pTasks:
                 if t["name"] == taskName:
                     tId = t["id"]
-        if tId == None:
+        if tId is None:
             raise RuntimeError("Task %s not found."%(taskName))
         return tId
     
-    def getClientName(self, clientID, workspace, skipCliQuery=False):
+    def getClientName(self, clientID, workspace, skipCliQuery=False, nullOK=False):
         clientName = None
         if skipCliQuery:
             clients = self.clients
@@ -289,8 +290,11 @@ class ClockifyAPI:
             if c["id"] == clientID:
                 clientName = c["name"]
 
-        if clientName == None:
-            raise RuntimeError("Client %s not found in workspace %s"%(clientID, workspace))
+        if clientName is None:
+            if nullOK:
+                clientName = ""
+            else:
+                raise RuntimeError("Client %s not found in workspace %s" % (clientID, workspace))
 
         return clientName
 
@@ -367,7 +371,6 @@ class ClockifyAPI:
             clientID = self.getClientID(client)
         else:
             clientID = None
-
 
         #find first project (no client)
         #find perfect match project (client + project match)
@@ -849,10 +852,21 @@ class ClockifyAPI:
             self.logger.warning("Error deleteEntry, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             return RetVal.ERR
 
-    def deleteProject(self, projectID, workspace, skipPrjQuery=False):
-        wsId = self.getWorkspaceID(workspace)
+    
+    def deleteProject(self, project):
+        # We have to archive before deletion.
+        projectID = project["id"]
+        wsId = project["workspaceId"]
+        self.logger.info("Archiving project before deletion (this is required by the API):")
+        project["archived"] = True
+        url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
+        rv = self._request(url, body=project, typ="PUT")
+        if not rv.ok:
+            self.logger.warning("Error archiveProject, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            return RetVal.ERR
         
-        url = self.url +"/workspaces/%s/projects/%s"%(wsId, projectID)
+        # Now we can delete.
+        url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
         rv = self._request(url, typ="DELETE")
         if rv.ok:
             self._syncProjects = True
@@ -861,6 +875,7 @@ class ClockifyAPI:
             self.logger.warning("Error deleteProject, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             return RetVal.ERR
         
+    
     def deleteAllProjects(self, workspace):
         curUser = self._loadedUserEmail
         for user in self._APIusers:
@@ -870,11 +885,12 @@ class ClockifyAPI:
             idx = 0
             numProjects = len(prjs)
             for p in prjs:
-                #get client:
-                clientName = self.getClientName(p["clientId"])
+
+                clientName = self.getClientName(p["clientId"], workspace, nullOK=True)
+                
                 msg = "deleting project %s (%d of %d)"%(p["name"] + "|" + clientName, idx+1, numProjects)
                 self.logger.info(msg)
-                self.deleteProject(p["name"], workspace, skipPrjQuery=True)
+                self.deleteProject(p)
                 idx+=1
         self._loadUser(curUser)
         
