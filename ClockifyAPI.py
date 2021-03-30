@@ -306,8 +306,9 @@ class ClockifyAPI:
             clients = self.getClients(workspace)
             
         for c in clients:
-            if c["name"] == client:
+            if c["name"] == clientName:
                 clId = c["id"]
+
         if clId == None:
             raise RuntimeError("Client %s not found in workspace %s"%(client, workspace))
         return clId
