@@ -144,7 +144,7 @@ class Clue:
                 estimatedTime = None;
 
             # Add the task to Clockify:
-            rv = self.clockify.addTask(wsId, task["name"], projectId, estimatedTime)
+            rv = self.clockify.addTask(wsId, task["name"], clockify_pid, estimatedTime)
 
             if rv == ClockifyAPI.RetVal.EXISTS:
                 self.logger.info("task %s already exists, skip..."%task["name"])
@@ -214,7 +214,7 @@ class Clue:
                             pgroup["name"] = wgroup["name"]
 
             name = p["name"]
-            #pId = self.clockify.getProjectID(p["name"], workspace)
+            
             if name not in clockifyPrjNames:
                 err = False
                 clientName = None
@@ -300,8 +300,11 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         for p in prjs:
             name = p["name"]
             if p["active"] == False:
-                self.logger.info("project %s is not active, trying to archive (%d of %d)"%(name, idx, numPrjs))
-                rv = self.clockify.archiveProject(name, workspace)
+                # get clientName
+                clientName = self.toggl.getClientName(p["cid"])
+                self.logger.info("project %s is not active, trying to archive (%d of %d)" % 
+                                 (name + "|" + clientName, idx, numPrjs))
+                rv = self.clockify.archiveProject(name, clientName, workspace)
                 if rv == ClockifyAPI.RetVal.OK:
                     self.logger.info("...ok")
                     numOk+=1
@@ -341,27 +344,37 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 tagNames = e["tags"]
                 userName = e["user"]
                 taskName = e["task"]
+                clientName = e["client"]
+                
+                #print e, we need clientName!
+                print("Entry", e)
+                
 
                 try:
+                    #verify email exists in both toggl / clockify
                     userMail = self.toggl.getUserEmail(userID, self._workspace)
-                    self.clockify.getUserIDByMail(userMail, self._workspace)
+                    self.clockify.getUserIDByMail(userMail, self._workspace) # verify email actually exists in workspace.
                 except:
                     try:
+                        # attempt to match user via username
                         cID = self.clockify.getUserIDByName(userName, self._workspace)
                         self.logger.info("user '%s' found in clockify workspace as ID=%s"%(userName, cID))
                         userMail = self.clockify.getUserMailById(cID, self._workspace)
                         self.logger.info("user ID %s (name='%s') not in toggl workspace, but found a match in clockify workspace %s..."%(userID, userName, userMail))
                     except:
+                        # skip user entirely
                         if self._skipInvTogglUsers:
                             self.logger.warning("user ID %s (name='%s') not in toggl workspace, skipping entry %s..."%(userID, userName, description))
                             continue
+                        # assign task to the fallback email address.
                         elif self.clockify.fallbackUserMail != None:
                             userMail = self.clockify.fallbackUserMail
                             self.logger.info("user '%s' not found in clockify workspace, using fallback user '%s'"%(userName, userMail))
                         else:
                             raise
-                rv, data = self.clockify.addEntry(start, description, projectName, userMail, self._workspace, 
-                         timeZone="Z", end=end, billable=billable, tagNames=tagNames, taskName=taskName)
+               
+                rv, data = self.clockify.addEntry(start, description, projectName, clientName, userMail, self._workspace, 
+                         timeZone="Z", end=end, billable=billable, tagNames=tagNames, taskName=taskName, )
                 if rv == ClockifyAPI.RetVal.ERR:
                     self._numErr+=1
                 elif rv == ClockifyAPI.RetVal.EXISTS:
