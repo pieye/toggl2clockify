@@ -197,7 +197,10 @@ class Clue:
         numErr = 0
 
         for p in prjs:
-            self.logger.info ("Adding project %s (%d of %d projects)"%(p["name"], idx+1, numPrjs))
+            clientName = None
+            if "cid" in p:
+                clientName = self.toggl.getClientName(p["cid"], workspace)
+            self.logger.info ("Adding project %s (%d of %d projects)" % (p["name"] + "|" + clientName, idx+1, numPrjs))
 
             # Prepare Group assignment to Projects
             pgroups = self.toggl.getProjectGroups(p["name"], workspace)
@@ -217,9 +220,7 @@ class Clue:
             
             if name not in clockifyPrjNames:
                 err = False
-                clientName = None
-                if "cid" in p:
-                    clientName = self.toggl.getClientName(p["cid"], workspace)
+                
                 isPublic = not p["is_private"]
                 billable = p["billable"]
                 color = p["hex_color"]
