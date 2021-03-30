@@ -61,7 +61,7 @@ parser.add_argument("--skipGroups", help="don't sync groups", action="store_true
 parser.add_argument("--doArchive", help="sync archiving of projects", action="store_true")
 parser.add_argument("--reqTimeout", help="sleep time between clockify web requests", type=float, default=0.01)
 parser.add_argument("--deleteEntries", nargs='+', help="delete all entries of given users")
-parser.add_argument("--wipeAll", help="delete all clockify entries, projects, clients, tasks", action="store_true")
+parser.add_argument("--wipeAll", help="delete all clockify entries, projects, clients, tasks", default=False, action="store_true")
 args = parser.parse_args()
 
 ok = False
@@ -178,7 +178,7 @@ if ok:
         if query_yes_no(question, default="no") == False:
             sys.exit(0)
         
-    if args.wipeAll != None:
+    if args.wipeAll:
         question = "This will wipe your entire workspace. Are you sure?"
         if query_yes_no(question, default="no") == False:
             sys.exit(0)
