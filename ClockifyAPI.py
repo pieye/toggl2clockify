@@ -62,7 +62,7 @@ class ClockifyAPI:
     def __init__(self, apiToken, adminEmail="", reqTimeout=0.01, fallbackUserMail=None):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
-        self.urlWorking = 'https://api.clockify.me/api/'
+        self.urlWorking = 'https://api.clockify.me/api/v1'
         self._syncClients = True
         self._syncUsers = True
         self._syncProjects = True
@@ -327,7 +327,7 @@ class ClockifyAPI:
                 self.projects = []
                 
                 wsId = self.getWorkspaceID(workspace)
-                url = self.urlWorking + "/workspaces/%s/projects/"%wsId
+                url = self.urlWorking + "/workspaces/%s/projects"%wsId
 
                 self.projects = self.multiGetRequest(url)
                 self._syncProjects = False
@@ -658,7 +658,7 @@ class ClockifyAPI:
             url = self.url + "/workspaces/%s/time-entries"%wsId
             
             if projectName != None:
-                projectId = self.getProjectID(projectName, workspace, skipPrjQuery=self._syncProjects)
+                projectId = self.getProjectID(projectName, workspace)
                 if taskName != None:
                     pTasks = self.getTasksOnProject(workspace, projectName)
                     taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
@@ -685,6 +685,8 @@ class ClockifyAPI:
                 params["taskId"] = taskId
             if end != None:
                 params["end"] = end
+            else:
+                params["end"] = startTime
             if tagNames != None:
                 tagIDs = []
                 for tag in tagNames:
@@ -779,7 +781,7 @@ class ClockifyAPI:
     def archiveProject(self, projectName, workspace, skipPrjQuery=False):
         wsId = self.getWorkspaceID(workspace)
         pID = self.getProjectID(projectName, workspace, skipPrjQuery=skipPrjQuery)
-        url = "https://api.clockify.me/api/workspaces/%s/projects/%s/archive"%(wsId, pID)
+        url = self.urlWorking + "/workspaces/%s/projects/%s/archive"%(wsId, pID)
         rv = self._request(url, typ="GET")
         if rv.status_code == 200:
             rv = RetVal.OK
@@ -861,7 +863,7 @@ class ClockifyAPI:
     def deleteClient(self, clientName, workspace, skipCliQuery=False):
         wsId = self.getWorkspaceID(workspace)
         clId = self.getClientID(clientName, workspace, skipCliQuery)
-        url = "https://api.clockify.me/api/workspaces/%s/clients/%s"%(wsId, clId)
+        url = self.urlWorking + "/workspaces/%s/clients/%s"%(wsId, clId)
         rv = self._request(url, typ="DELETE")
         if rv.ok:
             self._syncClients = True

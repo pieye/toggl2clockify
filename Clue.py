@@ -344,6 +344,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
 
                 try:
                     userMail = self.toggl.getUserEmail(userID, self._workspace)
+                    self.clockify.getUserIDByMail(userMail, self._workspace)
                 except:
                     try:
                         cID = self.clockify.getUserIDByName(userName, self._workspace)
