@@ -61,6 +61,7 @@ parser.add_argument("--skipGroups", help="don't sync groups", action="store_true
 parser.add_argument("--doArchive", help="sync archiving of projects", action="store_true")
 parser.add_argument("--reqTimeout", help="sleep time between clockify web requests", type=float, default=0.01)
 parser.add_argument("--deleteEntries", nargs='+', help="delete all entries of given users")
+parser.add_argument("--wipeAll", help="delete all clockify entries, projects, clients, tasks", action="store_true")
 args = parser.parse_args()
 
 ok = False
@@ -177,6 +178,15 @@ if ok:
         if query_yes_no(question, default="no") == False:
             sys.exit(0)
         
+    if args.wipeAll != None:
+        question = "This will wipe your entire workspace. Are you sure?"
+        if query_yes_no(question, default="no") == False:
+            sys.exit(0)
+        else:
+            for ws in workspaces:
+                cl.clockify.wipeOutWorkspace(ws)
+            sys.exit(0)
+
     numWS = len(workspaces)
     idx = 1
     for ws in workspaces:
@@ -271,7 +281,7 @@ if ok:
         logger.info("Phase 6 of 7: Import time entries from %s until %s"%(str(startTime), str(endTime)))
         logger.info("-------------------------------------------------------------")
         if args.skipEntries == False:
-            numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, skipInvTogglUsers=True, until=endTime)
+            numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, until=endTime)
         else:
             numEntries=0
             numOk=0
