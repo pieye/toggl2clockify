@@ -904,10 +904,8 @@ class ClockifyAPI:
         self.deleteAllClients(workspace)
         self._loadUser(curUser)
 
-    def deleteClient(self, clientName, workspace, skipCliQuery=False):
-        wsId = self.getWorkspaceID(workspace)
-        clId = self.getClientID(clientName, workspace, skipCliQuery)
-        url = self.urlWorking + "/workspaces/%s/clients/%s"%(wsId, clId)
+    def deleteClient(self, clId, wsId):
+        url = self.urlWorking + "/workspaces/%s/clients/%s" % (wsId, clId)
         rv = self._request(url, typ="DELETE")
         if rv.ok:
             self._syncClients = True
@@ -927,6 +925,6 @@ class ClockifyAPI:
             for c in clis:
                 msg = "deleting client %s (%d of %d)"%(c["name"], idx+1, numClients)
                 self.logger.info(msg)
-                self.deleteClient(c["name"], workspace, skipCliQuery=True)
+                self.deleteClient(c["id"], c["workspaceId"])
                 idx+=1
-        self._loadUser(curUser)        
+        self._loadUser(curUser)
