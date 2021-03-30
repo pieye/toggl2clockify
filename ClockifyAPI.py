@@ -369,17 +369,17 @@ class ClockifyAPI:
             projects = self.getProjects(workspace, skipPrjQuery)
             
         if client: 
-            clientID = self.getClientID(client)
+            clientID = self.getClientID(client, workspace)
         else:
             clientID = None
 
-        #find first project (no client)
-        #find perfect match project (client + project match)
+        # find first project (no client)
+        # find perfect match project (client + project match)
         for p in projects:
             if p["name"] == project and p["clientId"] == clientID:
                 result = p["id"]
                 break
-                                   
+
         if result == None:
             raise RuntimeError("Project %s with client %s not found in workspace %s" %
                                (project, client, workspace))
