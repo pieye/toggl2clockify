@@ -67,6 +67,8 @@ class TogglAPI:
             req = self._request(url)
             if req.ok:
                 self.tags = req.json()
+                if self.tags is None:
+                    self.tags = []
             else:
                 raise RuntimeError("Error getting toggl workspace tags, status code=%d, msg=%s"%(req.status_code, req.reason))
             self._syncTags = False

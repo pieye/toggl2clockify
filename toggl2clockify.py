@@ -115,8 +115,8 @@ if ok:
             
     if ok:
         togglKey = data["TogglKey"]
-        if type(togglKey) != type(""):
-            logger.error("json entry 'TogglKey' must be a strings")
+        if type(togglKey) != type(u""):
+            logger.error("json entry 'TogglKey' must be a string")
             ok = False
             
     if ok:
@@ -155,7 +155,7 @@ if ok:
             ok = False
         else:
             clockifyAdmin = data["ClockifyAdmin"]
-            if type(clockifyAdmin) != type(""):
+            if type(clockifyAdmin) != type(u""):
                 logger.error("json entry 'ClockifyAdmin' must be a string")
                 ok = False
 

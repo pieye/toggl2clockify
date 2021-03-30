@@ -685,6 +685,7 @@ class ClockifyAPI:
             
             if projectName != None:
                 projectId = self.getProjectID(projectName, clientName, workspace)
+
                 if taskName != None:
                     pTasks = self.getTasksFromProjectID(workspace, projectId)
                     taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
@@ -913,4 +914,4 @@ class ClockifyAPI:
                 self.logger.info(msg)
                 self.deleteClient(c["name"], workspace, skipCliQuery=True)
                 idx+=1
-        self._loadUser(curUser)        
+        self._loadUser(curUser)
