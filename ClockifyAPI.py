@@ -790,7 +790,7 @@ class ClockifyAPI:
         if rv == RetVal.OK:
             wsId = self.getWorkspaceID(workspace)
             uId = self.userID
-            
+            prjID = None
             if projectName != None and clientName != None:
                 prjID = self.getProjectID(projectName, clientName, workspace)
             if start != None:
@@ -800,7 +800,8 @@ class ClockifyAPI:
             params = {"description": description}
             if start != None:
                 params["start"] = start
-            if projectName != None:
+
+            if prjID is not None:
                 params["project"] = prjID
             
             rv = self._request(url, body=params, typ="GET")
