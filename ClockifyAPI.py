@@ -298,7 +298,7 @@ class ClockifyAPI:
 
         return clientName
 
-    def getClientID(self, clientName, workspace, skipCliQuery=False):
+    def getClientID(self, clientName, workspace, skipCliQuery=False, nullOK=False):
         clId = None
         if skipCliQuery:
             clients = self.clients
@@ -310,7 +310,10 @@ class ClockifyAPI:
                 clId = c["id"]
 
         if clId == None:
-            raise RuntimeError("Client %s not found in workspace %s"%(client, workspace))
+            if nullOK:
+                return None
+            else:
+                raise RuntimeError("Client %s not found in workspace %s"%(client, workspace))
         return clId
 
     def getProjects(self, workspace, skipPrjQuery=False):
@@ -369,14 +372,14 @@ class ClockifyAPI:
             projects = self.getProjects(workspace, skipPrjQuery)
             
         if client: 
-            clientID = self.getClientID(client, workspace)
+            clientID = self.getClientID(client, workspace, nullOK=True)
         else:
             clientID = None
 
         # find first project (no client)
         # find perfect match project (client + project match)
-        for p in projects:
-            if p["name"] == project and p["clientId"] == clientID:
+        for p in projects:            
+            if p["name"] == project and (clientID is None or p["clientId"] == clientID):
                 result = p["id"]
                 break
 
@@ -458,12 +461,14 @@ class ClockifyAPI:
                    
         wsId = self.getWorkspaceID(workspace)
         clId = None
-        if not client is None:
-            clId = self.getClientID(client, workspace)
+        if client is not None:
+            clId = self.getClientID(client, workspace, nullOK=True)
+
         url = self.url + "/workspaces/%s/projects"%wsId
         params = {"name":name, "isPublic": isPublic,
                   "billable": billable, "color": color}
-        if not clId is None:
+        
+        if clId is not None:
             params["clientId"] = clId
 
         if memberships != None:

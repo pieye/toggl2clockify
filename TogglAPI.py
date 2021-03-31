@@ -221,14 +221,17 @@ class TogglAPI:
         response=self._request(url)
         return response.json()
 
-    def getClientName(self, clientID, workspace):
+    def getClientName(self, clientID, workspace, nullOK=False):
         clients = self.getWorkspaceClients(workspace)
         cName = None
         for c in clients:
             if c["id"] == clientID:
                 cName = c["name"]
         if cName == None:
-            raise RuntimeError("clientID %d not found in workspace %s"%(clientID, workspace))       
+            if nullOK:
+                return ""
+            else:
+                raise RuntimeError("clientID %d not found in workspace %s"%(clientID, workspace))       
         return cName
     
     def getUserName(self, userID, workspaceName):

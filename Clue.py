@@ -199,7 +199,7 @@ class Clue:
         for p in prjs:
             clientName = ""
             if "cid" in p:
-                clientName = self.toggl.getClientName(p["cid"], workspace)
+                clientName = self.toggl.getClientName(p["cid"], workspace, nullOK=True)
             self.logger.info ("Adding project %s (%d of %d projects)" % (p["name"] + "|" + clientName, idx+1, numPrjs))
 
             # Prepare Group assignment to Projects
@@ -302,7 +302,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
             name = p["name"]
             if p["active"] == False:
                 # get clientName
-                clientName = self.toggl.getClientName(p["cid"])
+                clientName = self.toggl.getClientName(p["cid"], workspace, nullOK=True)
                 self.logger.info("project %s is not active, trying to archive (%d of %d)" % 
                                  (name + "|" + clientName, idx, numPrjs))
                 rv = self.clockify.archiveProject(name, clientName, workspace)
@@ -332,7 +332,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         else:
             for e in entries:
                 self._idx+=1
-                self.logger.info("adding entry %s, project: %s (%d of %d)"%(e["description"], e["project"], self._idx, totalCount))
+                
                 start = self.timeToUtc(e["start"])
                 if e["end"] != None:
                     end = self.timeToUtc(e["end"])
@@ -347,9 +347,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 taskName = e["task"]
                 clientName = e["client"]
                 
-                #print e, we need clientName!
-                print("Entry", e)
-                
+                self.logger.info("adding entry %s, project: %s (%d of %d)"%(description, projectName+"|"+str(clientName), self._idx, totalCount))
 
                 try:
                     #verify email exists in both toggl / clockify
