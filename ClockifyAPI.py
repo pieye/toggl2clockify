@@ -694,6 +694,7 @@ class ClockifyAPI:
             
             if projectName != None:
                 projectId = self.getProjectID(projectName, clientName, workspace)
+
                 if taskName != None:
                     pTasks = self.getTasksFromProjectID(workspace, projectId)
                     taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
