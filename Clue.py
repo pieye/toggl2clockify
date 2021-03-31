@@ -347,7 +347,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 taskName = e["task"]
                 clientName = e["client"]
                 
-                self.logger.info("adding entry %s, project: %s (%d of %d)"%(description, projectName+"|"+str(clientName), self._idx, totalCount))
+                self.logger.info("adding entry %s, project: %s (%d of %d)"%(description, str(projectName)+"|"+str(clientName), self._idx, totalCount))
 
                 try:
                     #verify email exists in both toggl / clockify
