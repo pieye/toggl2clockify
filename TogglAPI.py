@@ -173,7 +173,7 @@ class TogglAPI:
 
         wsId = self.getWorkspaceID(workspaceName)        
         curPage = 1
-#        entries = []
+#       entries = []
         
         numEntries = 0
         while True:
@@ -194,7 +194,7 @@ class TogglAPI:
                 break
             else:
                 cb(data, totalCount)
-#                entries += jsonresp["data"]
+#               entries += jsonresp["data"]
                 
             self.logger.info ("got %d from %d entries"%(numEntries, totalCount))
 #        return entries

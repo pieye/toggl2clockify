@@ -744,13 +744,13 @@ class ClockifyAPI:
                         if 'projectId' in params:
                             if params["projectId"] != d['projectId']:
                                 anyDiff = True
-#                                self.logger.info("entry diff @projectID: %s %s"%(str(params["projectId"]), str(d['projectId'])))
+#                               self.logger.info("entry diff @projectID: %s %s"%(str(params["projectId"]), str(d['projectId'])))
                         if params["description"] != d["description"]:
                             anyDiff = True
-#                            self.logger.info("entry diff @desc: %s %s"%(str(params["description"]), str(d['description'])))
+#                           self.logger.info("entry diff @desc: %s %s"%(str(params["description"]), str(d['description'])))
                         if self.userID != d["userId"]:
                             anyDiff = True
-#                            self.logger.info("entry diff @userID: %s %s"%(str(self.userID), str(d['userId'])))
+#                           self.logger.info("entry diff @userID: %s %s"%(str(self.userID), str(d['userId'])))
                         if tagNames != None:
                             tagIdsRcv = d["tagIds"]
                             tagIdsRcv = tagIdsRcv if tagIdsRcv != None else []
@@ -758,7 +758,7 @@ class ClockifyAPI:
                             for tagID in tagIdsRcv:
                                 tagNamesRcv.append(self.getTagName(tagID, workspace))
                             if set(tagNames) != set(tagNamesRcv):
-#                                self.logger.info("entry diff @tagNames: %s %s"%(str(set(tagNames)), str(set(tagNamesRcv))))
+#                               self.logger.info("entry diff @tagNames: %s %s"%(str(set(tagNames)), str(set(tagNamesRcv))))
                                 anyDiff = True
                             
                         if anyDiff == False:
@@ -791,7 +791,7 @@ class ClockifyAPI:
             wsId = self.getWorkspaceID(workspace)
             uId = self.userID
             prjID = None
-            if projectName != None and clientName != None:
+            if projectName != None:
                 prjID = self.getProjectID(projectName, clientName, workspace)
             if start != None:
                 start = start.isoformat()+timeZone
