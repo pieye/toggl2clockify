@@ -118,8 +118,9 @@ If you're on windows you can run the file
 bin/toggl2clockify.exe
 ```
 
-directly or through python by
+directly or through python by installing the requirements, and then running it.
 ```bash
+pip install -r requirements.txt
 python toggl2clockify.py
 ```
 
