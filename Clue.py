@@ -197,7 +197,7 @@ class Clue:
         numErr = 0
 
         for p in prjs:
-            clientName = None
+            clientName = ""
             if "cid" in p:
                 clientName = self.toggl.getClientName(p["cid"], workspace)
             self.logger.info ("Adding project %s (%d of %d projects)" % (p["name"] + "|" + clientName, idx+1, numPrjs))
