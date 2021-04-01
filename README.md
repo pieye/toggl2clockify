@@ -141,7 +141,7 @@ to get a list of all supported commands.
 ### Remarks on archived projects
 **If you have archived projects in the toggl workspace, use the flag doArchive at the very end when you are sure, that all data has been migrated successfully**
 
-Your very last invokatin of the import tool should be
+Your very last invokation of the import tool should be
 ```bash
 bin/toggl2clockify.exe --skipClients --skipProjects --skipTasks --skipEntries --skipTags --doArchive
 ```
@@ -181,3 +181,7 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
     - NOT MIRGATED: timeInterval (not sure what purpose this serves), isLocked
 - All tasks of the workspace
 - User groups
+
+## Clearing the workspace
+You can use the `--wipeAll` flag to clear the entire workspace. This is useful for development/testing, since the duplication detection isn't perfect.
+This restores the workspace to a blank slate without having to create a new workspace. The program will wipe everything first, then immediately exit.
