@@ -143,7 +143,7 @@ to get a list of all supported commands.
 
 Your very last invokatin of the import tool should be
 ```bash
-bin/toggl2clockify.exe --skipClients --skipProjects --skipEntries --skipTags --doArchive
+bin/toggl2clockify.exe --skipClients --skipProjects --skipTasks --skipEntries --skipTags --doArchive
 ```
 
 When you try to add time entries for projects, which are **already archived in clockify**, the tool gets messed up:

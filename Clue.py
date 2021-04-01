@@ -288,10 +288,6 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
     
     def syncProjectsArchive(self, workspace):
         prjs = self.toggl.getWorkspaceProjects(workspace)
-        clockifyPrjs = self.clockify.getProjects(workspace)
-        clockifyPrjNames = []
-        for pr in clockifyPrjs:
-            clockifyPrjNames.append(pr["name"])
         
         idx = 0
         numPrjs = len(prjs)
@@ -300,19 +296,24 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         numErr = 0
         for p in prjs:
             name = p["name"]
+            clientName = None
+            if "cid" in p:
+                clientName = self.toggl.getClientName(p["cid"], workspace, nullOK=True)
             if p["active"] == False:
                 # get clientName
-                clientName = self.toggl.getClientName(p["cid"], workspace, nullOK=True)
+                
                 self.logger.info("project %s is not active, trying to archive (%d of %d)" % 
-                                 (name + "|" + clientName, idx, numPrjs))
-                rv = self.clockify.archiveProject(name, clientName, workspace)
+                                 (name + "|" + str(clientName), idx, numPrjs))
+                c_prjID = self.clockify.getProjectID(name, clientName, workspace)
+                c_prj = self.clockify.getProject(c_prjID)
+                rv = self.clockify.archiveProject(c_prj)
                 if rv == ClockifyAPI.RetVal.OK:
                     self.logger.info("...ok")
                     numOk+=1
                 else:
                     numErr+=1
             else:
-                self.logger.info("project %s is still active, skipping (%d of %d)"%(name, idx, numPrjs))
+                self.logger.info("project %s is still active, skipping (%d of %d)"%(name +"|"+str(clientName), idx, numPrjs))
                 numSkips+=1
             
             idx += 1

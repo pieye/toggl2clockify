@@ -363,6 +363,13 @@ class ClockifyAPI:
             self._loadUser(curUser)
 
         return self.projects
+    
+    def matchClient(self, projectData, clientId):
+        if clientId is None and "clientId" not in projectData:
+            return True
+        if "clientId" in projectData and projectData["clientId"] == clientId:
+            return True
+        return False
 
     def getProjectID(self, project, client, workspace, skipPrjQuery=False):
         result = None
@@ -375,11 +382,9 @@ class ClockifyAPI:
             clientID = self.getClientID(client, workspace, nullOK=True)
         else:
             clientID = None
-
-        # find first project (no client)
-        # find perfect match project (client + project match)
-        for p in projects:            
-            if p["name"] == project and (clientID is None or p["clientId"] == clientID):
+        
+        for p in projects:
+            if p["name"] == project and self.matchClient(p,clientID):
                 result = p["id"]
                 break
 
@@ -387,6 +392,16 @@ class ClockifyAPI:
             raise RuntimeError("Project %s with client %s not found in workspace %s" %
                                (project, client, workspace))
         return result
+
+
+    def getProject(self, projectID):
+        """
+        This is a little hacky since it relies on the "workspace" being correct.
+        """
+        for project in self.projects:
+            if project["id"] == projectID:
+                return project
+        return None
 
     def getUsers(self, workspace):
         if self._syncUsers == True:
@@ -815,11 +830,12 @@ class ClockifyAPI:
             
         return rv, data
     
-    def archiveProject(self, projectName, clientName, workspace, skipPrjQuery=False):
-        wsId = self.getWorkspaceID(workspace)
-        pID = self.getProjectID(projectName, clientName, workspace, skipPrjQuery=skipPrjQuery)
-        url = self.urlWorking + "/workspaces/%s/projects/%s/archive"%(wsId, pID)
-        rv = self._request(url, typ="GET")
+    def archiveProject(self, project):
+        projectID = project["id"]
+        wsId = project["workspaceId"]
+        project["archived"] = True
+        url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
+        rv = self._request(url, body=project, typ="PUT")
         if rv.status_code == 200:
             rv = RetVal.OK
         else:
@@ -863,16 +879,12 @@ class ClockifyAPI:
     
     def deleteProject(self, project):
         # We have to archive before deletion.
-        projectID = project["id"]
-        wsId = project["workspaceId"]
         self.logger.info("Archiving project before deletion (this is required by the API):")
-        project["archived"] = True
-        url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
-        rv = self._request(url, body=project, typ="PUT")
-        if not rv.ok:
-            self.logger.warning("Error archiveProject, status code=%d, msg=%s"%(rv.status_code, rv.reason))
-            return RetVal.ERR
-        
+        rv = self.archiveProject(project)
+        if rv != RetVal.OK:
+            return rv
+        self.logger.info("...ok")
+
         # Now we can delete.
         url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
         rv = self._request(url, typ="DELETE")
