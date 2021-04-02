@@ -364,10 +364,10 @@ class ClockifyAPI:
 
         return self.projects
     
-    def matchClient(self, projectData, clientId):
-        if clientId is None and "clientId" not in projectData:
+    def matchClient(self, projectData, clientName):
+        if clientName is None and "clientId" not in projectData:
             return True
-        if "clientId" in projectData and projectData["clientId"] == clientId:
+        if "clientName" in projectData and projectData["clientName"] == clientName:
             return True
         return False
 
@@ -378,19 +378,14 @@ class ClockifyAPI:
         else:
             projects = self.getProjects(workspace, skipPrjQuery)
             
-        if client: 
-            clientID = self.getClientID(client, workspace, nullOK=True)
-        else:
-            clientID = None
-        
         for p in projects:
-            if p["name"] == project and self.matchClient(p,clientID):
+            if p["name"] == project and self.matchClient(p,client):
                 result = p["id"]
                 break
 
         if result == None:
             raise RuntimeError("Project %s with client %s not found in workspace %s" %
-                               (project, client, workspace))
+                               (project, str(client), workspace))
         return result
 
 
