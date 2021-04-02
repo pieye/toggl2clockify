@@ -378,7 +378,7 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 if rv == ClockifyAPI.RetVal.ERR:
                     self._numErr+=1
                 elif rv == ClockifyAPI.RetVal.EXISTS:
-                    self.logger.info("entry already exists, skip...")
+                    self.logger.info("...entry already exists, skip")
                     self._numSkips+=1
                 else:
                     self.logger.info("...ok")

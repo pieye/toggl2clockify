@@ -707,18 +707,17 @@ class ClockifyAPI:
             wsId = self.getWorkspaceID(workspace)
             url = self.url + "/workspaces/%s/time-entries"%wsId
             
+            taskId = None
             if projectName != None:
                 projectId = self.getProjectID(projectName, clientName, workspace)
 
                 if taskName != None:
                     pTasks = self.getTasksFromProjectID(workspace, projectId)
-                    taskId = self.getTaskIdFromTasks(taskName, pTasks)                   
+                    taskId = self.getTaskIdFromTasks(taskName, pTasks)
                     self.logger.info("Found task %s in project %s"%(taskName, projectName))
-                else:
-                    taskId = None
-            else:
-                taskId = None
-                self.logger.info("no project in entry %s"%description)
+                
+            else:                
+                self.logger.info("no project in entry %s" % description)
             
             startTime = start.isoformat()+timeZone
             if end != None:
@@ -728,22 +727,25 @@ class ClockifyAPI:
                           "start": startTime,
                           "billable":billable,
                           "description": description
-                      }
+                     }
             
             if projectName != None:
                 params["projectId"] = projectId
+
             if taskId != None:
                 params["taskId"] = taskId
+
             if end != None:
                 params["end"] = end
             else:
                 params["end"] = startTime
+
             if tagNames != None:
                 tagIDs = []
                 for tag in tagNames:
                     tid = self.getTagID(tag, workspace)
                     tagIDs.append(tid)
-                params["tagIds"] = tagIDs            
+                params["tagIds"] = tagIDs
 
             rv, entr = self.getTimeEntryForUser(userMail, workspace, description, projectName, clientName,
                                          start, timeZone=timeZone)
@@ -756,7 +758,7 @@ class ClockifyAPI:
                         anyDiff = False
                         if params["start"] != d['timeInterval']["start"]:
                             anyDiff = True
-#                            self.logger.info("entry diff @start: %s %s"%(str(params["start"]), str(d['timeInterval']["start"])))
+#                           self.logger.info("entry diff @start: %s %s"%(str(params["start"]), str(d['timeInterval']["start"])))
                         if 'projectId' in params:
                             if params["projectId"] != d['projectId']:
                                 anyDiff = True
@@ -783,13 +785,13 @@ class ClockifyAPI:
                 
                 if entr == []:
                     rv = self._request(url, body=params, typ="POST")
-                    self.logger.info("Adding entry: %s"%(json.dumps(params, indent=2)))                
+                    self.logger.info("Adding entry:\n%s"%(json.dumps(params, indent=2)))
                     
                     if rv.ok:
                         data = rv.json()
                         rv = RetVal.OK
                     else:
-                        self.logger.warning("Error adding time entrs, status code=%d, msg=%s"%(rv.status_code, rv.text))
+                        self.logger.warning("Error adding time entry, status code=%d, msg=%s"%(rv.status_code, rv.text))
                         rv = RetVal.ERR
                 else:
                     rv = RetVal.EXISTS
@@ -878,6 +880,8 @@ class ClockifyAPI:
 
     
     def deleteProject(self, project):
+        wsId = project["workspaceId"]
+        projectID = project["id"]
         # We have to archive before deletion.
         self.logger.info("Archiving project before deletion (this is required by the API):")
         rv = self.archiveProject(project)
@@ -886,10 +890,12 @@ class ClockifyAPI:
         self.logger.info("...ok")
 
         # Now we can delete.
+        self.logger.info("Deleting project:")
         url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
         rv = self._request(url, typ="DELETE")
         if rv.ok:
             self._syncProjects = True
+            self.logger.info("...ok")
             return RetVal.OK
         else:
             self.logger.warning("Error deleteProject, status code=%d, msg=%s"%(rv.status_code, rv.reason))
@@ -905,12 +911,14 @@ class ClockifyAPI:
             idx = 0
             numProjects = len(prjs)
             for p in prjs:
-
-                clientName = self.getClientName(p["clientId"], workspace, nullOK=True)
-                
-                msg = "deleting project %s (%d of %d)"%(p["name"] + "|" + clientName, idx+1, numProjects)
+                clientName = self.getClientName(p["clientId"], workspace, nullOK=True)                
+                projName = ""
+                if "name" in p:
+                    projName = p["name"]
+                msg = "deleting project %s (%d of %d)"%(projName + "|" + str(clientName), idx+1, numProjects)
                 self.logger.info(msg)
                 self.deleteProject(p)
+                
                 idx+=1
         self._loadUser(curUser)
         
