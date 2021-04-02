@@ -836,12 +836,14 @@ class ClockifyAPI:
         projectID = project["id"]
         wsId = project["workspaceId"]
         project["archived"] = True
+        projectName = self.getProjNameFromDict(project)
+
         url = self.urlWorking +"/workspaces/%s/projects/%s" % (wsId, projectID)
         rv = self._request(url, body=project, typ="PUT")
         if rv.status_code == 200:
             rv = RetVal.OK
         else:
-            self.logger.warning("Archiving project %s failed, status code=%d, msg=%s"%(projectName, rv.status_code, rv.reason))
+            self.logger.warning("Archiving project %s failed, status code=%d, msg=%s"%(str(projectName), rv.status_code, rv.reason))
             rv = RetVal.ERR
         
         return rv
@@ -901,7 +903,16 @@ class ClockifyAPI:
             self.logger.warning("Error deleteProject, status code=%d, msg=%s"%(rv.status_code, rv.reason))
             return RetVal.ERR
         
-    
+    def getProjNameFromDict(self, project):
+        if "name" in project:
+            return project["name"]
+        return None
+
+    def getClientNameFromDict(self, project):
+        if "clientName" in project:
+            return project["clientName"]
+        return None
+
     def deleteAllProjects(self, workspace):
         curUser = self._loadedUserEmail
         for user in self._APIusers:
@@ -911,11 +922,9 @@ class ClockifyAPI:
             idx = 0
             numProjects = len(prjs)
             for p in prjs:
-                clientName = self.getClientName(p["clientId"], workspace, nullOK=True)                
-                projName = ""
-                if "name" in p:
-                    projName = p["name"]
-                msg = "deleting project %s (%d of %d)"%(projName + "|" + str(clientName), idx+1, numProjects)
+                clientName = self.getClientNameFromDict(p)
+                projName = self.getProjNameFromDict(p)
+                msg = "deleting project %s (%d of %d)"%(str(projName) + "|" + str(clientName), idx+1, numProjects)
                 self.logger.info(msg)
                 self.deleteProject(p)
                 
