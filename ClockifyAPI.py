@@ -858,7 +858,7 @@ class ClockifyAPI:
                         self.logger.info(msg)
                         rv = self.deleteEntry(e["id"], workspace)
                         if rv == RetVal.OK:
-                            self.logger.info("...ok")   
+                            self.logger.info("...ok")
                         idx += 1
                 self._loadUser(curUser)
             if numEntries == 0:
@@ -882,9 +882,8 @@ class ClockifyAPI:
         # We have to archive before deletion.
         self.logger.info("Archiving project before deletion (this is required by the API):")
         rv = self.archiveProject(project)
-        if rv != RetVal.OK:
-            return rv
-        self.logger.info("...ok")
+        if rv == RetVal.OK:
+            self.logger.info("...ok")
 
         # Now we can delete.
         self.logger.info("Deleting project:")
