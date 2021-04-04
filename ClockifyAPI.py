@@ -365,7 +365,7 @@ class ClockifyAPI:
         return self.projects
     
     def matchClient(self, projectData, clientName):
-        if clientName is None and "clientId" not in projectData:
+        if clientName is None and "clientName" not in projectData:
             return True
         if "clientName" in projectData and projectData["clientName"] == clientName:
             return True
