@@ -161,8 +161,10 @@ class ClockifyAPI:
             'X-Api-Key': self.apiToken}
         
         curPage = 1
+        
         rvData = []
         while True:
+            start_ts = time.time()
             body = {"page": curPage, "page-size": 50}
             rv = requests.get(url,headers=headers, params=body)
             if rv.status_code == 200:
@@ -178,8 +180,15 @@ class ClockifyAPI:
                     else:
                         break
                 curPage += 1
+            elif rv.status_code == 429:
+                time.sleep(1.0)
+                self.TIME_PER_REQUEST *= 1.1
+                self.logger.info("Timed out. Setting cooldown to %s and retrying" % str(self.TIME_PER_REQUEST))
             else:
                 raise RuntimeError("get on url %s failed with status code %d"%(url, rv.status_code))
+            if (time.time() - start_ts < self.TIME_PER_REQUEST):
+                time.sleep(self.TIME_PER_REQUEST - (time.time() - start_ts))
+            
         return rvData
     
     def _request(self, url, body=None, typ="GET"):
@@ -198,6 +207,13 @@ class ClockifyAPI:
 
         if (time.time() - start_ts < self.TIME_PER_REQUEST):
             time.sleep(self.TIME_PER_REQUEST - (time.time() - start_ts))
+        
+        # retry on timeout
+        if response.status_code == 429:
+            time.sleep(1.0)
+            self.TIME_PER_REQUEST *= 1.1
+            self.logger.info("Timed out. Setting cooldown to %s and retrying" % str(self.TIME_PER_REQUEST))
+            return self._request(url,body,typ)
 
         return response
     
