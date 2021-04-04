@@ -11,6 +11,7 @@ import time
 from enum import Enum
 import logging
 import json
+from multiprocessing.pool import ThreadPool
 
 class RetVal(Enum):
     OK=0
@@ -59,6 +60,9 @@ class MemberShip:
         return self.memberShip
 
 class ClockifyAPI:
+    REQUESTS_PER_SECOND = 10.0
+    TIME_PER_REQUEST = 1.0/(REQUESTS_PER_SECOND-1) # add slight time buffer so we don't trigger limit
+
     def __init__(self, apiToken, adminEmail="", reqTimeout=0.01, fallbackUserMail=None):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
@@ -72,7 +76,8 @@ class ClockifyAPI:
         self._adminEmail = adminEmail
         self._reqTimeout = reqTimeout
         self.fallbackUserMail = fallbackUserMail
-        
+        self.threadPool = ThreadPool(int(self.REQUESTS_PER_SECOND))
+
         self._APIusers = []
         adminFound = False
         fallbackFound = False
@@ -176,8 +181,9 @@ class ClockifyAPI:
             else:
                 raise RuntimeError("get on url %s failed with status code %d"%(url, rv.status_code))
         return rvData
-        
+    
     def _request(self, url, body=None, typ="GET"):
+        start_ts = time.time()
         headers={'X-Api-Key': self.apiToken}
         if typ == "GET":
             response=requests.get(url,headers=headers, params=body)
@@ -189,7 +195,11 @@ class ClockifyAPI:
             response=requests.delete(url,headers=headers)
         else:
             raise RuntimeError("invalid request type %s"%typ)
-        time.sleep(self._reqTimeout)
+
+        if (time.time() - start_ts < self.TIME_PER_REQUEST):
+            time.sleep(self.TIME_PER_REQUEST - (time.time() - start_ts))
+
+        #time.sleep(self._reqTimeout)
         return response
     
     def getWorkspaces(self):
@@ -215,7 +225,6 @@ class ClockifyAPI:
         return self.workspaces
     
     def addClient(self, name, workspace):
-        
         curUser = self._loadedUserEmail
         self._loadAdmin()
         
@@ -844,7 +853,9 @@ class ClockifyAPI:
         return rv
     
     def deleteEntriesOfUser(self, userMail, workspace):
+        wsId = self.getWorkspaceID(workspace)
         while True:
+            self.logger.info("Fetching more entries (50 at a time):")
             rv, entries = self.getTimeEntryForUser(userMail, workspace, "", None, None, None, "")
             numEntries = 0
             if rv == RetVal.OK:
@@ -852,29 +863,44 @@ class ClockifyAPI:
                 rv = self._loadAdmin()
                 if rv == RetVal.OK:
                     numEntries = len(entries)
-                    idx = 0
-                    for e in entries:
-                        msg = "deleting entry %d of %d"%(idx+1, numEntries)
-                        self.logger.info(msg)
-                        rv = self.deleteEntry(e["id"], workspace)
-                        if rv == RetVal.OK:
-                            self.logger.info("...ok")
-                        idx += 1
+                    delete_tasks = []
+                    task_status = ["_"]*numEntries
+                    # add tasks to task list
+                    for idx, e in enumerate(entries):
+                        delete_tasks.append((e["id"],wsId,(idx,numEntries,task_status)))
+                    rv = self.threadPool.starmap(self.deleteEntryThreaded, delete_tasks)
+
                 self._loadUser(curUser)
             if numEntries == 0:
                 break
         return numEntries
-                    
-    def deleteEntry(self, entryID, workspace):
-        wsId = self.getWorkspaceID(workspace)
-        url = self.url +"/workspaces/%s/time-entries/%s"%(wsId, entryID)
-        rv = self._request(url, typ="DELETE")
+               
+    def deleteEntryThreaded(self, entryID, workspaceID, taskInfo):
+        """
+        Pretty prints deleteEntry, assuming it receives a few status variables
+        """
+        dem, nom, status_arr = taskInfo
+        entryStr = "(%s / %s)" % (str(dem + 1), str(nom))
+
+        rv = self.deleteEntry(entryID, workspaceID) # actually do the work.
+        
         if rv.ok:
+            status_arr[dem]="O"
+            self.logger.info("".join(status_arr))
             return RetVal.OK
         else:
-            self.logger.warning("Error deleteEntry, status code=%d, msg=%s"%(rv.status_code, rv.reason))
+            status_arr[entryId[0]]="X"
+            self.logger.info("".join(status_arr))
+            self.logger.warning("Error deleteEntry %s, status code=%d, msg=%s" % (entryStr, rv.status_code, rv.reason))
             return RetVal.ERR
 
+    def deleteEntry(self, entryID, wsId):
+        """
+        Returns a direct requests.request result, including rv.ok, rv.status_code etc.
+        """        
+        url = self.url +"/workspaces/%s/time-entries/%s"%(wsId, entryID)
+        rv = self._request(url, typ="DELETE")
+        return rv
     
     def deleteProject(self, project):
         wsId = project["workspaceId"]
