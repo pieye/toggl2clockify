@@ -198,7 +198,7 @@ class TogglAPI:
                 cb(data, totalCount)
 #               entries += jsonresp["data"]
                 
-            self.logger.info ("got %d from %d entries"%(numEntries, totalCount))
+            self.logger.info ("Received %d out of %d entries" % (numEntries, totalCount))
 #        return entries
     
     def getProjectID(self, projectName, workspaceName):
