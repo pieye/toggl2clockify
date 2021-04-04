@@ -76,7 +76,7 @@ class ClockifyAPI:
         self._adminEmail = adminEmail
         self._reqTimeout = reqTimeout
         self.fallbackUserMail = fallbackUserMail
-        self.threadPool = ThreadPool(int(self.REQUESTS_PER_SECOND))
+        self.threadPool = ThreadPool(int(self.REQUESTS_PER_SECOND)) # only used for entry deletion
 
         self._APIusers = []
         adminFound = False
@@ -199,7 +199,6 @@ class ClockifyAPI:
         if (time.time() - start_ts < self.TIME_PER_REQUEST):
             time.sleep(self.TIME_PER_REQUEST - (time.time() - start_ts))
 
-        #time.sleep(self._reqTimeout)
         return response
     
     def getWorkspaces(self):
@@ -325,7 +324,7 @@ class ClockifyAPI:
                 raise RuntimeError("Client %s not found in workspace %s"%(client, workspace))
         return clId
 
-    def getProjects(self, workspace, skipPrjQuery=False):
+    def getProjects(self, workspace):
         if self._syncProjects == True:
             curUser = self._loadedUserEmail
             self.projects = []
@@ -374,8 +373,8 @@ class ClockifyAPI:
         return self.projects
     
     def matchClient(self, projectData, clientName):
-        if clientName is None and "clientName" not in projectData:
-            return True
+        if clientName is None:
+           clientName = ""
         if "clientName" in projectData and projectData["clientName"] == clientName:
             return True
         return False
@@ -385,7 +384,7 @@ class ClockifyAPI:
         if skipPrjQuery:
             projects = self.projects
         else:
-            projects = self.getProjects(workspace, skipPrjQuery)
+            projects = self.getProjects(workspace)
             
         for p in projects:
             if p["name"] == project and self.matchClient(p,client):
@@ -702,7 +701,27 @@ class ClockifyAPI:
         self._loadUser(curUser)
         return rv
 
-    def addEntry(self, start, description, projectName, clientName, userMail, workspace, 
+    def addEntriesThreaded(self, tasks):
+        """
+        Tasks is a list of lists, each task represents an entry to add, and its contents the arguments
+        to addEntryThreaded
+        """
+        taskLen = len(tasks)
+        status_indicator = [0,taskLen]
+        for task in tasks:
+            task.append(status_indicator)
+
+        return self.threadPool.starmap(self._addEntryThreaded, tasks)
+
+    def _addEntryThreaded(self, start, description, projectName, clientName, userMail, workspace, 
+                 timeZone, end, billable, tagNames, taskName, threaded_status):
+        result = self.addEntry(start,description,projectName,clientName,userMail,workspace,
+                               timeZone,end,billable,tagNames,taskName)
+        threaded_status[0] += 1
+        self.logger.info("Added Entries: (%s / %s)" %(str(threaded_status[0]),str(threaded_status[1])))
+        return result
+
+    def addEntry(self, start, description, projectName, clientName, userMail, workspace,
                  timeZone="Z", end=None, billable=False, tagNames=None, taskName=None):
         rv = self._loadUser(userMail)
         data = None
@@ -789,13 +808,12 @@ class ClockifyAPI:
                 
                 if entr == []:
                     rv = self._request(url, body=params, typ="POST")
-                    self.logger.info("Adding entry:\n%s"%(json.dumps(params, indent=2)))
-                    
                     if rv.ok:
+                        self.logger.info("Added entry:\n%s"%(json.dumps(params, indent=2)))
                         data = rv.json()
                         rv = RetVal.OK
                     else:
-                        self.logger.warning("Error adding time entry, status code=%d, msg=%s"%(rv.status_code, rv.text))
+                        self.logger.warning("Error adding time entry:\n%s, status code=%d, msg=%s"%(json.dumps(params,indent=2), rv.status_code, rv.text))
                         rv = RetVal.ERR
                 else:
                     rv = RetVal.EXISTS
@@ -805,7 +823,7 @@ class ClockifyAPI:
         return rv, data
     
     def getTimeEntryForUser(self, userMail, workspace, description, 
-                            projectName, clientName, start, timeZone="Z", ):
+                            projectName, clientName, start, timeZone="Z"):
         data = None
         rv = self._loadUser(userMail)
         

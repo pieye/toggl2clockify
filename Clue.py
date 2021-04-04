@@ -325,13 +325,43 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         utc = t.astimezone(pytz.UTC).isoformat().split("+")[0]#
         return dateutil.parser.parse(utc)
 
+    def verifyUserMail(self, togglUserID, togglUserName):
+        """
+        Verifies and returns the email associated with a toggl User ID
+        """
+        try:
+            #verify email exists in both toggl / clockify
+            userMail = self.toggl.getUserEmail(togglUserID, self._workspace) #verify email exists in toggl.
+            self.clockify.getUserIDByMail(userMail, self._workspace) # verify email actually exists in workspace.
+        except:
+            try:
+                # attempt to match user via username
+                cID = self.clockify.getUserIDByName(togglUserName, self._workspace)
+                self.logger.info("user '%s' found in clockify workspace as ID=%s"%(togglUserName, cID))
+                userMail = self.clockify.getUserMailById(cID, self._workspace)
+                self.logger.info("user ID %s (name='%s') not in toggl workspace, but found a match in clockify workspace %s..."%(togglUserID, togglUserName, userMail))
+            except:
+                # skip user entirely
+                if self._skipInvTogglUsers:
+                    self.logger.warning("user ID %s (name='%s') not in toggl workspace, skipping entry %s..."%(togglUserID, togglUserName, description))
+                    return None
+                # assign task to the fallback email address.
+                elif self.clockify.fallbackUserMail != None:
+                    userMail = self.clockify.fallbackUserMail
+                    self.logger.info("user '%s' not found in clockify workspace, using fallback user '%s'"%(togglUserID, userMail))
+                else:
+                    raise
+        return userMail
+
     def onNewReports(self, entries, totalCount):
             
         if entries == None and totalCount == 0:
             #next page
             self._idx = 0
         else:
-            for e in entries:
+            entry_data = []
+            
+            for idx, e in enumerate(entries):
                 self._idx+=1
                 
                 start = self.timeToUtc(e["start"])
@@ -348,40 +378,22 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
                 taskName = e["task"]
                 clientName = e["client"]
                 
-                self.logger.info("adding entry %s, project: %s (%d of %d)"%(description, str(projectName)+"|"+str(clientName), self._idx, totalCount))
+                self.logger.info("Queuing entry %s, project: %s (%d of %d)"%(description, str(projectName)+"|"+str(clientName), self._idx, totalCount))
+                userMail = self.verifyUserMail(userID, userName)
+                if userMail is None and self._skipInvTogglUsers:
+                    self._numSkips+=1
+                    continue
 
-                try:
-                    #verify email exists in both toggl / clockify
-                    userMail = self.toggl.getUserEmail(userID, self._workspace)
-                    self.clockify.getUserIDByMail(userMail, self._workspace) # verify email actually exists in workspace.
-                except:
-                    try:
-                        # attempt to match user via username
-                        cID = self.clockify.getUserIDByName(userName, self._workspace)
-                        self.logger.info("user '%s' found in clockify workspace as ID=%s"%(userName, cID))
-                        userMail = self.clockify.getUserMailById(cID, self._workspace)
-                        self.logger.info("user ID %s (name='%s') not in toggl workspace, but found a match in clockify workspace %s..."%(userID, userName, userMail))
-                    except:
-                        # skip user entirely
-                        if self._skipInvTogglUsers:
-                            self.logger.warning("user ID %s (name='%s') not in toggl workspace, skipping entry %s..."%(userID, userName, description))
-                            continue
-                        # assign task to the fallback email address.
-                        elif self.clockify.fallbackUserMail != None:
-                            userMail = self.clockify.fallbackUserMail
-                            self.logger.info("user '%s' not found in clockify workspace, using fallback user '%s'"%(userName, userMail))
-                        else:
-                            raise
-               
-                rv, data = self.clockify.addEntry(start, description, projectName, clientName, userMail, self._workspace, 
-                         timeZone="Z", end=end, billable=billable, tagNames=tagNames, taskName=taskName, )
+                entry_data.append([start,description,projectName,clientName,userMail,self._workspace,
+                                   "Z",end,billable,tagNames,taskName])
+
+            results = self.clockify.addEntriesThreaded(entry_data)
+            for rv, _ in results:
                 if rv == ClockifyAPI.RetVal.ERR:
                     self._numErr+=1
                 elif rv == ClockifyAPI.RetVal.EXISTS:
-                    self.logger.info("...entry already exists, skip")
                     self._numSkips+=1
                 else:
-                    self.logger.info("...ok")
                     self._numOk+=1
             self._numEntries += len(entries)
     

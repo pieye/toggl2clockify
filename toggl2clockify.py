@@ -287,7 +287,7 @@ if ok:
             numOk=0
             numSkips=0
             numErr=0
-            logger.info("... skipping phase 4")
+            logger.info("... skipping phase 6")
         
         logger.info("-------------------------------------------------------------")
         logger.info("Phase 6 of 7 (Import entries) completed (entries=%d, ok=%d, skips=%d, err=%d)"%(numEntries, numOk, numSkips, numErr))
