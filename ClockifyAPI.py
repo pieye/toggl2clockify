@@ -183,7 +183,7 @@ class ClockifyAPI:
             elif rv.status_code == 429:
                 time.sleep(1.0)
                 self.TIME_PER_REQUEST *= 1.1
-                self.logger.info("Timed out. Setting cooldown to %s and retrying" % str(self.TIME_PER_REQUEST))
+                self.logger.warning("Timed out. Setting cooldown to %s and retrying" % str(self.TIME_PER_REQUEST))
             else:
                 raise RuntimeError("get on url %s failed with status code %d"%(url, rv.status_code))
             if (time.time() - start_ts < self.TIME_PER_REQUEST):
@@ -212,7 +212,7 @@ class ClockifyAPI:
         if response.status_code == 429:
             time.sleep(1.0)
             self.TIME_PER_REQUEST *= 1.1
-            self.logger.info("Timed out. Setting cooldown to %s and retrying" % str(self.TIME_PER_REQUEST))
+            self.logger.warning("Timed out. Setting cooldown to %s and retrying" % str(self.TIME_PER_REQUEST))
             return self._request(url,body,typ)
 
         return response
