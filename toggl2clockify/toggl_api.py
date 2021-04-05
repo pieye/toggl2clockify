@@ -17,21 +17,22 @@ class TogglAPI:
     def __init__(self, apiToken):
         self.logger = logging.getLogger('toggl2clockify')
         self.apiToken = apiToken
-        self.url = 'https://www.toggl.com/api/v8/me'
+        self.url = 'https://www.toggl.com/api/v8'
 
-        response=self._request(self.url)
+        response=self._request(self.url + "/me")
         if response.status_code!=200:
             raise RuntimeError("Login failed. Check your API key")
             
         response=response.json()
         self.email=response['data']['email']
         self._get_workspaces()
-        self._syncProjects = True
-        self._syncClients = True
-        self._syncUsers = True
-        self._syncTags = True
-        self._syncGroups = True
-        self._syncTasks = True
+        
+        self._resync_projects = True
+        self._resync_clients = True
+        self._resync_users = True
+        self._resync_tags = True
+        self._resync_groups = True
+        self._resync_tasks = True
         
     def _request(self, url, params=None):
         string=self.apiToken+':api_token'
@@ -42,9 +43,14 @@ class TogglAPI:
         return response
         
     def _get_workspaces(self):
-        response=self._request(self.url)
-        response=response.json()
-        self.workspace_ids_names=[{'name':item['name'],'id':item['id']} for item in response['data']['workspaces'] if item['admin']==True]
+        response = self._request(self.url + "/me")
+        response = response.json()
+        workspaces = response['data']['workspaces']
+
+        self.workspace_ids_names=[
+                                   {'name':item['name'],'id':item['id']} 
+                                    for item in workspaces if item['admin']
+                                 ]
     
     def get_workspaces(self):
         return self.workspace_ids_names
@@ -60,10 +66,10 @@ class TogglAPI:
         return ws_id
     
     def get_tags(self, workspace_name):
-        if self._syncTags:
+        if self._resync_tags:
             self.tags = []
-            wsId = self.get_workspace_id(workspace_name)       
-            url = r"https://www.toggl.com/api/v8/workspaces/%d/tags"%wsId
+            wsId = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/tags" % wsId
             req = self._request(url)
             if req.ok:
                 self.tags = req.json()
@@ -71,46 +77,46 @@ class TogglAPI:
                     self.tags = []
             else:
                 raise RuntimeError("Error getting toggl workspace tags, status code=%d, msg=%s"%(req.status_code, req.reason))
-            self._syncTags = False
+            self._resync_tags = False
         
         return self.tags
     
     def get_groups(self, workspace_name):
-        if self._syncGroups:
+        if self._resync_groups:
             self.groups = []
-            wsId = self.get_workspace_id(workspace_name)       
-            url = r"https://www.toggl.com/api/v8/workspaces/%d/groups"%wsId
+            wsId = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/groups"%wsId
             req = self._request(url)
             if req.ok:
                 self.groups = req.json()
             else:
                 raise RuntimeError("Error getting toggl workspace groups, status code=%d, msg=%s"%(req.status_code, req.reason))
-            self._syncGroups = False
+            self._resync_groups = False
         
         return self.groups
 
     def get_users(self, workspace_name):
-        if self._syncUsers:
-            wsId = self.get_workspace_id(workspace_name)       
-            url = r"https://www.toggl.com/api/v8/workspaces/%d/users"%wsId
+        if self._resync_users:
+            wsId = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/users"%wsId
             req = self._request(url)
             if req.ok:
                 self.users = req.json()
             else:
                 raise RuntimeError("Error getting toggl workspace users, status code=%d, msg=%s"%(req.status_code, req.reason))
-            self._syncUsers = False
+            self._resync_users = False
         
         return self.users
     
     def get_clients(self, workspace_name):
-        if self._syncClients:
+        if self._resync_clients:
             wsId = self.get_workspace_id(workspace_name)
-            url = r"https://www.toggl.com/api/v8/workspaces/%d/clients"%wsId
+            url = self.url + "/workspaces/%d/clients"%wsId
             req = self._request(url)
             self.clients = req.json()
             if self.clients is None:
                 self.clients = []
-            self._syncClients = False
+            self._resync_clients = False
         
             self.dump_json("toggl_clients.json", self.clients)
             
@@ -118,25 +124,25 @@ class TogglAPI:
         return self.clients
     
     def get_projects(self, workspace_name):
-        if self._syncProjects:
+        if self._resync_projects:
             wsId = self.get_workspace_id(workspace_name)       
-            url = r"https://www.toggl.com/api/v8/workspaces/%d/projects"%wsId
+            url = self.url + "/workspaces/%d/projects"%wsId
             params = {"active": "both"}
             req = self._request(url, params=params)
             self.projects = req.json()
-            self._syncProjects = False
+            self._resync_projects = False
             
             self.dump_json("toggl_projects.json", self.projects)
         
         return self.projects
 
     def get_tasks(self, workspace_name):
-        if self._syncTasks:
+        if self._resync_tasks:
             wsId = self.get_workspace_id(workspace_name)
-            url = r"https://www.toggl.com/api/v8/workspaces/%d/tasks"%wsId
+            url = self.url + "/workspaces/%d/tasks"%wsId
             req = self._request(url)
             self.tasks = req.json()
-            self._syncTasks = False
+            self._resync_tasks = False
 
             self.dump_json("toggl_tasks.json", self.tasks)
 
@@ -206,13 +212,13 @@ class TogglAPI:
     
     def get_project_users(self, project_name, workspace_name):
         prjId = self.get_project_id(project_name, workspace_name)
-        url = "https://www.toggl.com/api/v8/projects/%d/project_users"%prjId
+        url = self.url + "/projects/%d/project_users"%prjId
         response=self._request(url)
         return response.json()
     
     def get_project_groups(self, project_name, workspace_name):
         prjId = self.get_project_id(project_name, workspace_name)
-        url = "https://www.toggl.com/api/v8/projects/%d/project_groups"%prjId
+        url = self.url + "/projects/%d/project_groups"%prjId
         response=self._request(url)
         return response.json()
 

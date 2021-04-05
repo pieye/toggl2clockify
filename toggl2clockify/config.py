@@ -82,7 +82,9 @@ class Config:
                     "json entry '%s' missing in file %s" % (key, self.f_name)
                 ) from error
 
-            self.logger.info("json entry '%s' not in file, default to %s", key, str(default))
+            self.logger.info(
+                "json entry '%s' not in file, default to %s", key, str(default)
+            )
             return default
 
         try:
