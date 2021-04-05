@@ -13,14 +13,10 @@ __email__ = "markus.proeller@pieye.org"
 
 
 import logging
-import os
-import json
-import datetime
 import sys
-import dateutil
-
 
 from toggl2clockify.Clue import Clue
+from toggl2clockify.config import Config
 
 logger = logging.getLogger("toggl2clockify")
 
@@ -53,111 +49,6 @@ def query_yes_no(question, default="yes"):
         if choice in valid:
             return valid[choice]
         sys.stdout.write("Please respond with 'yes' or 'no' " "(or 'y' or 'n').\n")
-
-
-def load_config():
-    """
-    Loads the config file and returns a tuple of required info
-    This function opens the json file then passes its logic to check_config
-    """
-    f_name = os.path.abspath("config.json")
-
-    try:
-        with open(f_name, "r") as file:
-            try:
-                data = json.load(file)
-                
-            except json.JSONDecodeError as error:
-                logger.error("Error decoding file: %s", str(error))        
-    except FileNotFoundError:
-        logger.error("File %s not found", f_name)
-
-    return check_config(data, f_name)
-
-
-def check_config(data, f_name):
-    """
-    Tries to parse each config item, and then returns a (success, values_tuple)
-    """
-
-    if "ClockifyKeys" not in data:
-        logger.error("json entry 'ClockifyKeys' missing in file %s", f_name)
-        return (False, None)
-
-    c_keys = data["ClockifyKeys"]
-    if not isinstance(c_keys, list):
-        logger.error("json entry 'ClockifyKeys' must be a list of strings")
-        return (False, None)
-
-    if "ClockifyAdmin" not in data:
-        logger.error("json entry 'ClockifyAdmin' missing in file %s", f_name)
-        return (False, None)
-
-    c_admin = data["ClockifyAdmin"]
-    if not isinstance(c_admin, str):
-        logger.error("json entry 'ClockifyAdmin' must be a string")
-        return (False, None)
-
-    if "TogglKey" not in data:
-        logger.error("json entry 'TogglKey' missing in file %s", f_name)
-        return (False, None)
-
-    toggl_key = data["TogglKey"]
-    if not isinstance(toggl_key, str):
-        logger.error("json entry 'TogglKey' must be a string")
-        return (False, None)
-
-    if "StartTime" not in data:
-        logger.error("json entry 'StartTime' missing in file %s", f_name)
-        return (False, None)
-
-    try:
-        start_time = dateutil.parser.parse(data["StartTime"])
-    except (ValueError, OverflowError):
-        logger.error(
-            "Could not parse 'StartTime' correctly make sure it is a ISO 8601 time string"
-        )
-        return (False, None)
-
-    if "EndTime" in data:
-        try:
-            end_time = dateutil.parser.parse(data["EndTime"])
-        except (ValueError, OverflowError):
-            logger.error(
-                "Could not parse 'EndTime' correctly make sure it is a ISO 8601 time string"
-            )
-            return (False, None)
-    else:
-        logger.info(
-            "'EndTime' not found in config file importing all entries until now"
-        )
-        end_time = datetime.datetime.now()
-
-    if "Workspaces" in data:
-        workspaces = data["Workspaces"]
-        if not isinstance(workspaces, list):
-            logger.error("json entry 'Workspaces' must be a list")
-            return (False, None)
-    else:
-        workspaces = None
-
-    if "FallbackUserMail" in data:
-        fallback_email = data["FallbackUserMail"]
-    else:
-        fallback_email = None
-
-    return (
-        True,
-        [
-            c_keys,
-            c_admin,
-            toggl_key,
-            start_time,
-            end_time,
-            workspaces,
-            fallback_email,
-        ],
-    )
 
 
 def get_workspaces(clue, workspaces):
@@ -269,7 +160,7 @@ def wipe_workspace(clue, workspaces):
     Deletes all specified workspaces, including clients/projects
     """
     question = "This will wipe your all of the following clockify workspaces:\n"
-    question += "\n".join(workspaces)
+    question += "\n".join(workspaces)+"\n"
     question += "Are you sure?"
 
     if not query_yes_no(question, default="no"):
@@ -286,24 +177,17 @@ def migrate(args):
     Alternatively wipes the entire workspace if --wipeAll is used.
     """
 
-    success, vals = load_config()
-    if not success:
-        return
+    config = Config()
 
-    # Unpack config into variables
-    (
-        c_keys,
-        c_admin,
-        toggl_key,
-        start_time,
-        end_time,
-        workspaces,
-        fallback_email,
-    ) = vals
+    clue = Clue(
+        config.clockify_keys,
+        config.clockify_admin,
+        config.toggl_key,
+        config.fallback_email,
+    )
 
-    clue = Clue(c_keys, c_admin, toggl_key, fallback_email)
-
-    workspaces = get_workspaces(clue, workspaces)
+    # Load workspaces if none were provided.
+    workspaces = get_workspaces(clue, config.workspaces)
 
     # Option to delete specified user's entries and exit
     if args.deleteEntries is not None:
@@ -322,4 +206,4 @@ def migrate(args):
             "Starting to import workspace '%s' (%d of %d)", workspace, idx + 1, num_ws
         )
         logger.info("-------------------------------------------------------------")
-        import_workspace(workspace, clue, start_time, end_time, args)
+        import_workspace(workspace, clue, config.start_time, config.end_time, args)
