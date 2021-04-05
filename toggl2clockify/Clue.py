@@ -354,55 +354,52 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         return userMail
 
     def onNewReports(self, entries, totalCount):
-            
-        if entries == None and totalCount == 0:
-            #next page
-            self._idx = 0
-        else:
-            entry_data = []
-            
-            for idx, e in enumerate(entries):
-                self._idx+=1
-                
-                start = self.timeToUtc(e["start"])
-                if e["end"] != None:
-                    end = self.timeToUtc(e["end"])
-                else:
-                    end = None
-                description = e["description"]
-                projectName = e["project"]
-                userID = e["uid"]
-                billable = e["is_billable"]
-                tagNames = e["tags"]
-                userName = e["user"]
-                taskName = e["task"]
-                clientName = e["client"]
-                
-                self.logger.info("Queuing entry %s, project: %s (%d of %d)"%(description, str(projectName)+"|"+str(clientName), self._idx, totalCount))
-                userMail = self.verifyUserMail(userID, userName)
-                if userMail is None and self._skipInvTogglUsers:
-                    self._numSkips+=1
-                    continue
+        """
+        Queues entries into format suitable for clockify
+        Then asks clockify to add the entries
+        """
 
-                entry_data.append([start,description,projectName,clientName,userMail,self._workspace,
-                                   "Z",end,billable,tagNames,taskName])
+        entry_data = []
+            
+        for idx, e in enumerate(entries):
+            start = self.timeToUtc(e["start"])
+            if e["end"] != None:
+                end = self.timeToUtc(e["end"])
+            else:
+                end = None
+            description = e["description"]
+            projectName = e["project"]
+            userID = e["uid"]
+            billable = e["is_billable"]
+            tagNames = e["tags"]
+            userName = e["user"]
+            taskName = e["task"]
+            clientName = e["client"]
+                
+            self.logger.info("Queuing entry %s, project: %s (%d of %d)"%(description, str(projectName)+"|"+str(clientName), idx, totalCount))
+            userMail = self.verifyUserMail(userID, userName)
+            if userMail is None and self._skipInvTogglUsers:
+                self._numSkips+=1
+                continue
 
-            results = self.clockify.addEntriesThreaded(entry_data)
-            for rv, _ in results:
-                if rv == clockify_api.RetVal.ERR:
-                    self._numErr+=1
-                elif rv == clockify_api.RetVal.EXISTS:
-                    self._numSkips+=1
-                else:
-                    self._numOk+=1
-            self._numEntries += len(entries)
+            entry_data.append([start,description,projectName,clientName,userMail,self._workspace,
+                                "Z",end,billable,tagNames,taskName])
+
+        results = self.clockify.addEntriesThreaded(entry_data)
+        for rv, _ in results:
+            if rv == clockify_api.RetVal.ERR:
+                self._numErr+=1
+            elif rv == clockify_api.RetVal.EXISTS:
+                self._numSkips+=1
+            else:
+                self._numOk+=1
+        self._numEntries += len(entries)
     
     
-    def syncEntries(self, workspace, startTime, skipInvTogglUsers=False, until=None):
+    def syncEntries(self, workspace, since, skipInvTogglUsers=False, until=None):
         if until is None:
             until = datetime.datetime.now()
-
-        self._idx = 0
+        
         self._numSkips = 0
         self._numOk = 0
         self._numErr = 0
@@ -410,7 +407,8 @@ be no admin in clockify. Check your workspace settings and grant admin rights to
         self._workspace = workspace
         self._skipInvTogglUsers = skipInvTogglUsers
         
-        self.toggl.get_reports(workspace, startTime, until, self.onNewReports)
+        since_until = (since, until)
+        self.toggl.get_reports(workspace, since_until, self.onNewReports)
                 
         return self._numEntries, self._numOk, self._numSkips, self._numErr
     

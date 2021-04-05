@@ -1,256 +1,367 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+Toggl api class, allows asking toggl for information
+"""
+
 __author__ = "Markus Proeller"
 __copyright__ = "Copyright 2019, pieye GmbH (www.pieye.org)"
 __maintainer__ = "Markus Proeller"
 __email__ = "markus.proeller@pieye.org"
 
 import base64
-import requests
 import time
 import datetime
 import logging
 import json
+import requests
+
+
+def dump_json(file_name, data):
+    """
+    dumps a dictionary into file_name
+    """
+    with open(file_name, "w") as file:
+        file.write(json.dumps(data, indent=2))
+
 
 class TogglAPI:
-    def __init__(self, apiToken):
-        self.logger = logging.getLogger('toggl2clockify')
-        self.apiToken = apiToken
-        self.url = 'https://www.toggl.com/api/v8'
+    """
+    Toggl API Class, allows requests for entries/projects/clients etc.
+    """
 
-        response=self._request(self.url + "/me")
-        if response.status_code!=200:
+    def __init__(self, api_token):
+        self.logger = logging.getLogger("toggl2clockify")
+        self.api_token = api_token
+        self.url = "https://www.toggl.com/api/v8"
+
+        response = self._request(self.url + "/me")
+        if response.status_code != 200:
             raise RuntimeError("Login failed. Check your API key")
-            
-        response=response.json()
-        self.email=response['data']['email']
+
+        response = response.json()
+        self.email = response["data"]["email"]
         self._get_workspaces()
-        
+
+        self.projects = []
+        self.clients = []
+        self.users = []
+        self.tags = []
+        self.groups = []
+        self.tasks = []
+
         self._resync_projects = True
         self._resync_clients = True
         self._resync_users = True
         self._resync_tags = True
         self._resync_groups = True
         self._resync_tasks = True
-        
+
     def _request(self, url, params=None):
-        string=self.apiToken+':api_token'
-        headers={
-            'Authorization':'Basic '+base64.b64encode(string.encode('ascii')).decode("utf-8")}
-        response=requests.get(url,headers=headers, params=params)
-        time.sleep(1)
+        """
+        Forwards a request, injecting api token
+        """
+        string = self.api_token + ":api_token"
+        headers = {
+            "Authorization": "Basic "
+            + base64.b64encode(string.encode("ascii")).decode("utf-8")
+        }
+        response = requests.get(url, headers=headers, params=params)
+        while response.status_code == 429:
+            time.sleep(1.1)  # Safe limit is 1/second
+            response = requests.get(url, headers=headers, params=params)
+
         return response
-        
+
     def _get_workspaces(self):
+        """
+        setup workspace_id map
+        """
         response = self._request(self.url + "/me")
         response = response.json()
-        workspaces = response['data']['workspaces']
+        workspaces = response["data"]["workspaces"]
 
-        self.workspace_ids_names=[
-                                   {'name':item['name'],'id':item['id']} 
-                                    for item in workspaces if item['admin']
-                                 ]
-    
+        self.workspace_ids_names = [
+            {"name": item["name"], "id": item["id"]}
+            for item in workspaces
+            if item["admin"]
+        ]
+
     def get_workspaces(self):
+        """
+        returns mapping for workspace_ids <-> workspace_names
+        """
         return self.workspace_ids_names
-    
+
     def get_workspace_id(self, workspace_name):
+        """
+        converts from workspace_name to workspace_id
+        """
         ws_id = None
         workspaces = self.get_workspaces()
-        for ws in workspaces:
-            if ws["name"] == workspace_name:
-                ws_id = ws["id"]
-        if ws_id == None:
-            raise RuntimeError("Workspace %s not found. Available workspaces: %s"%(workspace_name, workspaces))
+        for workspace in workspaces:
+            if workspace["name"] == workspace_name:
+                ws_id = workspace["id"]
+        if ws_id is None:
+            raise RuntimeError(
+                "Workspace %s not found. Available workspaces: %s"
+                % (workspace_name, workspaces)
+            )
         return ws_id
-    
+
     def get_tags(self, workspace_name):
+        """
+        lazily reloads tags into self.tags and returns it.
+        """
         if self._resync_tags:
             self.tags = []
-            wsId = self.get_workspace_id(workspace_name)
-            url = self.url + "/workspaces/%d/tags" % wsId
+            ws_id = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/tags" % ws_id
             req = self._request(url)
             if req.ok:
                 self.tags = req.json()
                 if self.tags is None:
                     self.tags = []
             else:
-                raise RuntimeError("Error getting toggl workspace tags, status code=%d, msg=%s"%(req.status_code, req.reason))
+                raise RuntimeError(
+                    "Error getting toggl workspace tags, status code=%d, msg=%s"
+                    % (req.status_code, req.reason)
+                )
             self._resync_tags = False
-        
+
         return self.tags
-    
+
     def get_groups(self, workspace_name):
+        """
+        lazily reloads groups into self.groups and returns it.
+        """
         if self._resync_groups:
             self.groups = []
-            wsId = self.get_workspace_id(workspace_name)
-            url = self.url + "/workspaces/%d/groups"%wsId
+            ws_id = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/groups" % ws_id
             req = self._request(url)
             if req.ok:
                 self.groups = req.json()
             else:
-                raise RuntimeError("Error getting toggl workspace groups, status code=%d, msg=%s"%(req.status_code, req.reason))
+                raise RuntimeError(
+                    "Error getting toggl workspace groups, status code=%d, msg=%s"
+                    % (req.status_code, req.reason)
+                )
             self._resync_groups = False
-        
+
         return self.groups
 
     def get_users(self, workspace_name):
+        """
+        lazily reloads users into self.users and returns it.
+        """
         if self._resync_users:
-            wsId = self.get_workspace_id(workspace_name)
-            url = self.url + "/workspaces/%d/users"%wsId
+            ws_id = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/users" % ws_id
             req = self._request(url)
             if req.ok:
                 self.users = req.json()
             else:
-                raise RuntimeError("Error getting toggl workspace users, status code=%d, msg=%s"%(req.status_code, req.reason))
+                raise RuntimeError(
+                    "Error getting toggl workspace users, status code=%d, msg=%s"
+                    % (req.status_code, req.reason)
+                )
             self._resync_users = False
-        
+
         return self.users
-    
+
     def get_clients(self, workspace_name):
+        """
+        lazily reloads clients into self.clients and returns it.
+        """
         if self._resync_clients:
-            wsId = self.get_workspace_id(workspace_name)
-            url = self.url + "/workspaces/%d/clients"%wsId
+            ws_id = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/clients" % ws_id
             req = self._request(url)
             self.clients = req.json()
             if self.clients is None:
                 self.clients = []
             self._resync_clients = False
-        
-            self.dump_json("toggl_clients.json", self.clients)
-            
+
+            dump_json("toggl_clients.json", self.clients)
 
         return self.clients
-    
+
     def get_projects(self, workspace_name):
+        """
+        lazily reloads projects into self.projects and returns it.
+        """
         if self._resync_projects:
-            wsId = self.get_workspace_id(workspace_name)       
-            url = self.url + "/workspaces/%d/projects"%wsId
+            ws_id = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/projects" % ws_id
             params = {"active": "both"}
             req = self._request(url, params=params)
             self.projects = req.json()
             self._resync_projects = False
-            
-            self.dump_json("toggl_projects.json", self.projects)
-        
+
+            dump_json("toggl_projects.json", self.projects)
+
         return self.projects
 
     def get_tasks(self, workspace_name):
+        """
+        lazily reloads tasks into self.tasks and returns it.
+        """
         if self._resync_tasks:
-            wsId = self.get_workspace_id(workspace_name)
-            url = self.url + "/workspaces/%d/tasks"%wsId
+            ws_id = self.get_workspace_id(workspace_name)
+            url = self.url + "/workspaces/%d/tasks" % ws_id
             req = self._request(url)
             self.tasks = req.json()
             self._resync_tasks = False
 
-            self.dump_json("toggl_tasks.json", self.tasks)
+            dump_json("toggl_tasks.json", self.tasks)
 
         return self.tasks
-    
-    def dump_json(self, file_name, data):
-        with open(file_name, "w") as file:
-            file.write(json.dumps(data, indent=2))
 
-    def get_reports(self, workspace_name, since, until, cb, time_zone="CET"):
+    def get_reports(self, workspace_name, since_until, callback, time_zone="CET"):
+        """
+        Gets entries from *since* to *until*, calling *cb* so that you can
+        write the results to clockify.
+        """
+        since, until = since_until
         end = False
-        nextStart = since
+        next_start = since
         while True:
-            curStop = nextStart + datetime.timedelta(days=300)
-            if curStop > until:
-                curStop = until
+            cur_stop = next_start + datetime.timedelta(days=300)
+            if cur_stop > until:
+                cur_stop = until
                 end = True
-            
-            self.logger.info ("fetching entries from %s to %s"%(nextStart.isoformat(), curStop.isoformat()))
-            self._getReports(workspace_name, nextStart, curStop, cb, timeZone=time_zone)
+
+            self.logger.info(
+                "fetching entries from %s to %s",
+                next_start.isoformat(),
+                cur_stop.isoformat(),
+            )
+            self._get_reports(
+                workspace_name, (next_start, cur_stop), callback, time_zone
+            )
             if end:
                 break
-            
-            cb(None, 0)
-            
-            nextStart = curStop
 
-    
-    def _getReports(self, workspaceName, since, until, cb, timeZone="CET"):
-        since = since.isoformat()+timeZone
-        until = until.isoformat()+timeZone
+            next_start = cur_stop
 
-        wsId = self.get_workspace_id(workspaceName)
-        curPage = 1
-        
-        numEntries = 0
+    def _get_reports(self, workspace_name, since_until, callback, time_zone="CET"):
+        since, until = since_until
+        since = since.isoformat() + time_zone
+        until = until.isoformat() + time_zone
+
+        ws_id = self.get_workspace_id(workspace_name)
+        page = 1
+
+        entry_cnt = 0
         while True:
-            params={'user_agent':self.email,'workspace_id':wsId,"since":since,"until":until, "page":curPage}
-            reportUrl = "https://toggl.com/reports/api/v2/details"
-            response=self._request(reportUrl, params=params)
+            params = {
+                "user_agent": self.email,
+                "workspace_id": ws_id,
+                "since": since,
+                "until": until,
+                "page": page,
+            }
+
+            report_url = "https://toggl.com/reports/api/v2/details"
+            response = self._request(report_url, params=params)
             if response.status_code == 400:
                 break
-            
-            curPage+=1
-            
+
+            page += 1
+
             jsonresp = response.json()
-            
+
             data = jsonresp["data"]
-            numEntries += len(data)
-            totalCount = jsonresp["total_count"]
+            entry_cnt += len(data)
+            total_cnt = jsonresp["total_count"]
             if len(data) == 0:
                 break
-            else:
-                cb(data, totalCount)
-                
-            self.logger.info ("Received %d out of %d entries" % (numEntries, totalCount))
-    
+
+            callback(data, total_cnt)
+
+            self.logger.info("Received %d out of %d entries", entry_cnt, total_cnt)
+
     def get_project_id(self, project_name, workspace_name):
-        pID = None
-        prjs = self.get_projects(workspace_name)
-        for p in prjs:
-            if p["name"] == project_name:
-                pID = p["id"]
-        if pID == None:
-            raise RuntimeError("project %s not found in workspace %s"%(project_name, workspace_name))
-        return pID
-    
+        """
+        Returns projectid from project_name and workspace_name
+        """
+        project_id = None
+        projects = self.get_projects(workspace_name)
+        for project in projects:
+            if project["name"] == project_name:
+                project_id = project["id"]
+        if project_id is None:
+            raise RuntimeError(
+                "project %s not found in workspace %s" % (project_name, workspace_name)
+            )
+        return project_id
+
     def get_project_users(self, project_name, workspace_name):
-        prjId = self.get_project_id(project_name, workspace_name)
-        url = self.url + "/projects/%d/project_users"%prjId
-        response=self._request(url)
+        """
+        Returns project's users
+        """
+        project_id = self.get_project_id(project_name, workspace_name)
+        url = self.url + "/projects/%d/project_users" % project_id
+        response = self._request(url)
         return response.json()
-    
+
     def get_project_groups(self, project_name, workspace_name):
-        prjId = self.get_project_id(project_name, workspace_name)
-        url = self.url + "/projects/%d/project_groups"%prjId
-        response=self._request(url)
+        """
+        Returns project's groups
+        """
+        project_id = self.get_project_id(project_name, workspace_name)
+        url = self.url + "/projects/%d/project_groups" % project_id
+        response = self._request(url)
         return response.json()
 
     def get_client_name(self, client_id, workspace, null_ok=False):
+        """
+        Returns clients name, given it's id
+        """
         clients = self.get_clients(workspace)
-        cName = None
-        for c in clients:
-            if c["id"] == client_id:
-                cName = c["name"]
-        if cName == None:
+        client_name = None
+        for client in clients:
+            if client["id"] == client_id:
+                client_name = client["name"]
+
+        if client_name is None:
             if null_ok:
                 return ""
-            else:
-                raise RuntimeError("clientID %d not found in workspace %s"%(client_id, workspace))       
-        return cName
-    
+
+            raise RuntimeError(
+                "clientID %d not found in workspace %s" % (client_id, workspace)
+            )
+        return client_name
+
     def get_username(self, user_id, workspace_name):
+        """
+        Returns username, given it's id
+        """
         users = self.get_users(workspace_name)
-        uName = None
-        for u in users:
-            if u["id"] == user_id:
-                uName = u["fullname"]
-        if uName == None:
-            raise RuntimeError("userID %d not found in workspace %s"%(user_id, workspace_name))
-        return uName
+        username = None
+        for user in users:
+            if user["id"] == user_id:
+                username = user["fullname"]
+        if username is None:
+            raise RuntimeError(
+                "userID %d not found in workspace %s" % (user_id, workspace_name)
+            )
+        return username
 
     def get_user_email(self, user_id, workspace_name):
+        """
+        Returns user's email, given its id
+        """
         users = self.get_users(workspace_name)
         email = None
-        for u in users:
-            if u["id"] == user_id:
-                email = u["email"]
-        if email == None:
-            raise RuntimeError("userID %d (%s) not found in workspace %s"%(user_id, email, workspace_name))
+        for user in users:
+            if user["id"] == user_id:
+                email = user["email"]
+        if email is None:
+            raise RuntimeError(
+                "userID %d (%s) not found in workspace %s"
+                % (user_id, email, workspace_name)
+            )
         return email
