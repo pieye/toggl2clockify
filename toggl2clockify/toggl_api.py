@@ -157,7 +157,7 @@ class TogglAPI:
             
             self.logger.info ("fetching entries from %s to %s"%(nextStart.isoformat(), curStop.isoformat()))
             self._getReports(workspace_name, nextStart, curStop, cb, timeZone=time_zone)
-            if end:    
+            if end:
                 break
             
             cb(None, 0)

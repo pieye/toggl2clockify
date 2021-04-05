@@ -27,8 +27,8 @@ class Config:
         self.clockify_keys = self.parse_list(data, "ClockifyKeys")
         self.clockify_admin = self.parse_item(data, "ClockifyAdmin")
         self.toggl_key = self.parse_item(data, "TogglKey")
-        self.start_time = self.parse_item(data, "StartTime")
-        self.end_time = self.parse_item(data, "EndTime", datetime.datetime.now())
+        self.start_time = self.parse_time(data, "StartTime")
+        self.end_time = self.parse_time(data, "EndTime", datetime.datetime.now())
         self.workspaces = self.parse_list(data, "Workspaces", True)
         self.fallback_email = self.parse_item(data, "FallbackUserMail", True)
 
@@ -82,9 +82,7 @@ class Config:
                     "json entry '%s' missing in file %s" % (key, self.f_name)
                 ) from error
 
-            self.logger.log(
-                "json entry '%s' not in file, default to %s" % (key, str(default))
-            )
+            self.logger.info("json entry '%s' not in file, default to %s", key, str(default))
             return default
 
         try:
