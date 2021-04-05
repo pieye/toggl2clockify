@@ -479,14 +479,12 @@ class Clue:
         Verifies and returns the email associated with a toggl User ID
         """
         try:
-
             # get email from toggl
             email = self.toggl.get_user_email(toggl_uid, self._workspace)
-
-            # verify email actually exists in workspace.
+            # verify email actually exists in workspace. This will raise an
+            # exception if it doesnt exist.
             self.clockify.getUserIDByMail(email, self._workspace)
-
-        except:
+        except RuntimeError:
             try:
                 # attempt to match user via username
                 c_id = self.clockify.getUserIDByName(toggl_username, self._workspace)
@@ -501,9 +499,9 @@ class Clue:
                      but found a match in clockify workspace %s...",
                     toggl_uid,
                     toggl_username,
-                    email,
+                    email
                 )
-            except:
+            except RuntimeError:
                 # skip user entirely
                 if self._skip_inv_toggl_users:
                     return None
@@ -515,10 +513,11 @@ class Clue:
                         toggl_uid,
                         email,
                     )
-
-                raise
+                else:
+                    raise
 
         return email
+
 
     def on_new_reports(self, entries, total_count):
         """

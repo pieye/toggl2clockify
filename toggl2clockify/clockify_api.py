@@ -456,7 +456,7 @@ class ClockifyAPI:
         for u in users:
             if u["name"] == user:
                 uId = u["id"]
-        if uId == None:
+        if uId is None:
             raise RuntimeError("User %s not found in workspace %s"%(user, workspace))
         return uId
     
@@ -476,7 +476,7 @@ class ClockifyAPI:
         for u in users:
             if u["email"] == email:
                 uId = u["id"]
-        if uId == None:
+        if uId is None:
             raise RuntimeError("User %s not found in workspace %s"%(email, workspace))
         return uId    
     
