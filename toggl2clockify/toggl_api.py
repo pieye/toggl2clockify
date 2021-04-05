@@ -25,7 +25,7 @@ class TogglAPI:
             
         response=response.json()
         self.email=response['data']['email']
-        self._getWorkspaces()
+        self._get_workspaces()
         self._syncProjects = True
         self._syncClients = True
         self._syncUsers = True
@@ -41,28 +41,28 @@ class TogglAPI:
         time.sleep(1)
         return response
         
-    def _getWorkspaces(self):
+    def _get_workspaces(self):
         response=self._request(self.url)
         response=response.json()
         self.workspace_ids_names=[{'name':item['name'],'id':item['id']} for item in response['data']['workspaces'] if item['admin']==True]
     
-    def getWorkspaces(self):
+    def get_workspaces(self):
         return self.workspace_ids_names
     
-    def getWorkspaceID(self, workspaceName):
+    def get_workspace_id(self, workspace_name):
         ws_id = None
-        workspaces = self.getWorkspaces()
+        workspaces = self.get_workspaces()
         for ws in workspaces:
-            if ws["name"] == workspaceName:
+            if ws["name"] == workspace_name:
                 ws_id = ws["id"]
         if ws_id == None:
-            raise RuntimeError("Workspace %s not found. Available workspaces: %s"%(workspaceName, workspaces))
+            raise RuntimeError("Workspace %s not found. Available workspaces: %s"%(workspace_name, workspaces))
         return ws_id
     
-    def getWorkspaceTags(self, workspaceName):
-        if self._syncTags == True:
+    def get_tags(self, workspace_name):
+        if self._syncTags:
             self.tags = []
-            wsId = self.getWorkspaceID(workspaceName)       
+            wsId = self.get_workspace_id(workspace_name)       
             url = r"https://www.toggl.com/api/v8/workspaces/%d/tags"%wsId
             req = self._request(url)
             if req.ok:
@@ -75,10 +75,10 @@ class TogglAPI:
         
         return self.tags
     
-    def getWorkspaceGroups(self, workspaceName):
-        if self._syncGroups == True:
+    def get_groups(self, workspace_name):
+        if self._syncGroups:
             self.groups = []
-            wsId = self.getWorkspaceID(workspaceName)       
+            wsId = self.get_workspace_id(workspace_name)       
             url = r"https://www.toggl.com/api/v8/workspaces/%d/groups"%wsId
             req = self._request(url)
             if req.ok:
@@ -89,9 +89,9 @@ class TogglAPI:
         
         return self.groups
 
-    def getWorkspaceUsers(self, workspaceName):
-        if self._syncUsers == True:
-            wsId = self.getWorkspaceID(workspaceName)       
+    def get_users(self, workspace_name):
+        if self._syncUsers:
+            wsId = self.get_workspace_id(workspace_name)       
             url = r"https://www.toggl.com/api/v8/workspaces/%d/users"%wsId
             req = self._request(url)
             if req.ok:
@@ -102,9 +102,9 @@ class TogglAPI:
         
         return self.users
     
-    def getWorkspaceClients(self, workspaceName):
-        if self._syncClients == True:
-            wsId = self.getWorkspaceID(workspaceName)       
+    def get_clients(self, workspace_name):
+        if self._syncClients:
+            wsId = self.get_workspace_id(workspace_name)
             url = r"https://www.toggl.com/api/v8/workspaces/%d/clients"%wsId
             req = self._request(url)
             self.clients = req.json()
@@ -117,9 +117,9 @@ class TogglAPI:
 
         return self.clients
     
-    def getWorkspaceProjects(self, workspaceName):
-        if self._syncProjects == True:
-            wsId = self.getWorkspaceID(workspaceName)       
+    def get_projects(self, workspace_name):
+        if self._syncProjects:
+            wsId = self.get_workspace_id(workspace_name)       
             url = r"https://www.toggl.com/api/v8/workspaces/%d/projects"%wsId
             params = {"active": "both"}
             req = self._request(url, params=params)
@@ -130,9 +130,9 @@ class TogglAPI:
         
         return self.projects
 
-    def getWorkspaceTasks(self, workspaceName):
-        if self._syncTasks == True:
-            wsId = self.getWorkspaceID(workspaceName)
+    def get_tasks(self, workspace_name):
+        if self._syncTasks:
+            wsId = self.get_workspace_id(workspace_name)
             url = r"https://www.toggl.com/api/v8/workspaces/%d/tasks"%wsId
             req = self._request(url)
             self.tasks = req.json()
@@ -146,7 +146,7 @@ class TogglAPI:
         with open(file_name, "w") as file:
             file.write(json.dumps(data, indent=2))
 
-    def getReports(self, workspaceName, since, until, cb, timeZone="CET"):
+    def get_reports(self, workspace_name, since, until, cb, time_zone="CET"):
         end = False
         nextStart = since
         while True:
@@ -156,7 +156,7 @@ class TogglAPI:
                 end = True
             
             self.logger.info ("fetching entries from %s to %s"%(nextStart.isoformat(), curStop.isoformat()))
-            self._getReports(workspaceName, nextStart, curStop, cb, timeZone=timeZone)
+            self._getReports(workspace_name, nextStart, curStop, cb, timeZone=time_zone)
             if end:    
                 break
             
@@ -169,7 +169,7 @@ class TogglAPI:
         since = since.isoformat()+timeZone
         until = until.isoformat()+timeZone
 
-        wsId = self.getWorkspaceID(workspaceName)
+        wsId = self.get_workspace_id(workspaceName)
         curPage = 1
         
         numEntries = 0
@@ -194,57 +194,57 @@ class TogglAPI:
                 
             self.logger.info ("Received %d out of %d entries" % (numEntries, totalCount))
     
-    def getProjectID(self, projectName, workspaceName):
+    def get_project_id(self, project_name, workspace_name):
         pID = None
-        prjs = self.getWorkspaceProjects(workspaceName)
+        prjs = self.get_projects(workspace_name)
         for p in prjs:
-            if p["name"] == projectName:
+            if p["name"] == project_name:
                 pID = p["id"]
         if pID == None:
-            raise RuntimeError("project %s not found in workspace %s"%(projectName, workspaceName))
+            raise RuntimeError("project %s not found in workspace %s"%(project_name, workspace_name))
         return pID
     
-    def getProjectUsers(self, projectName, workspaceName):
-        prjId = self.getProjectID(projectName, workspaceName)
+    def get_project_users(self, project_name, workspace_name):
+        prjId = self.get_project_id(project_name, workspace_name)
         url = "https://www.toggl.com/api/v8/projects/%d/project_users"%prjId
         response=self._request(url)
         return response.json()
     
-    def getProjectGroups(self, projectName, workspaceName):
-        prjId = self.getProjectID(projectName, workspaceName)
+    def get_project_groups(self, project_name, workspace_name):
+        prjId = self.get_project_id(project_name, workspace_name)
         url = "https://www.toggl.com/api/v8/projects/%d/project_groups"%prjId
         response=self._request(url)
         return response.json()
 
-    def getClientName(self, clientID, workspace, nullOK=False):
-        clients = self.getWorkspaceClients(workspace)
+    def get_client_name(self, client_id, workspace, null_ok=False):
+        clients = self.get_clients(workspace)
         cName = None
         for c in clients:
-            if c["id"] == clientID:
+            if c["id"] == client_id:
                 cName = c["name"]
         if cName == None:
-            if nullOK:
+            if null_ok:
                 return ""
             else:
-                raise RuntimeError("clientID %d not found in workspace %s"%(clientID, workspace))       
+                raise RuntimeError("clientID %d not found in workspace %s"%(client_id, workspace))       
         return cName
     
-    def getUserName(self, userID, workspaceName):
-        users = self.getWorkspaceUsers(workspaceName)
+    def get_username(self, user_id, workspace_name):
+        users = self.get_users(workspace_name)
         uName = None
         for u in users:
-            if u["id"] == userID:
+            if u["id"] == user_id:
                 uName = u["fullname"]
         if uName == None:
-            raise RuntimeError("userID %d not found in workspace %s"%(userID, workspaceName))
+            raise RuntimeError("userID %d not found in workspace %s"%(user_id, workspace_name))
         return uName
 
-    def getUserEmail(self, userID, workspaceName):
-        users = self.getWorkspaceUsers(workspaceName)
+    def get_user_email(self, user_id, workspace_name):
+        users = self.get_users(workspace_name)
         email = None
         for u in users:
-            if u["id"] == userID:
+            if u["id"] == user_id:
                 email = u["email"]
         if email == None:
-            raise RuntimeError("userID %d (%s) not found in workspace %s"%(userID, email, workspaceName))
+            raise RuntimeError("userID %d (%s) not found in workspace %s"%(user_id, email, workspace_name))
         return email
