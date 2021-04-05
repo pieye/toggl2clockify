@@ -63,7 +63,7 @@ class ClockifyAPI:
     REQUESTS_PER_SECOND = 10.0
     TIME_PER_REQUEST = 1.0/(REQUESTS_PER_SECOND-1) # add slight time buffer so we don't trigger limit
 
-    def __init__(self, apiToken, adminEmail="", reqTimeout=0.01, fallbackUserMail=None):
+    def __init__(self, apiToken, adminEmail="", fallbackUserMail=None):
         self.logger = logging.getLogger('toggl2clockify')
         self.url = 'https://clockify.me/api/v1'
         self.urlWorking = 'https://api.clockify.me/api/v1'
@@ -74,7 +74,6 @@ class ClockifyAPI:
         self._syncGroups = True
         self._syncTasks = True
         self._adminEmail = adminEmail
-        self._reqTimeout = reqTimeout
         self.fallbackUserMail = fallbackUserMail
         self.threadPool = ThreadPool(int(self.REQUESTS_PER_SECOND)) # only used for entry deletion
 

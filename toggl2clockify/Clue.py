@@ -6,8 +6,8 @@ __copyright__ = "Copyright 2019, pieye GmbH (www.pieye.org)"
 __maintainer__ = "Markus Proeller"
 __email__ = "markus.proeller@pieye.org"
 
-import TogglAPI
-import ClockifyAPI
+from toggl2clockify import TogglAPI
+from toggl2clockify import ClockifyAPI
 import dateutil.parser
 import pytz
 import datetime
@@ -16,7 +16,7 @@ import sys
 import json
 
 class Clue:
-    def __init__(self, clockifyKey, clockifyAdmin, togglKey, clockifyReqTimeout=1, fallbackUserMail=None):
+    def __init__(self, clockifyKey, clockifyAdmin, togglKey, fallbackUserMail):
         self.logger = logging.getLogger('toggl2clockify')
         
         self.logger.info("testing toggl API key %s"%togglKey)
@@ -27,7 +27,7 @@ class Clue:
             self.logger.error("something went wrong with your toggl key, msg=%s"%str(e))
             raise
         
-        self.clockify = ClockifyAPI.ClockifyAPI(clockifyKey, clockifyAdmin, reqTimeout=clockifyReqTimeout, fallbackUserMail=fallbackUserMail)
+        self.clockify = ClockifyAPI.ClockifyAPI(clockifyKey, clockifyAdmin, fallbackUserMail)
         
     def syncTags(self, workspace):
         tags = self.toggl.getWorkspaceTags(workspace)
