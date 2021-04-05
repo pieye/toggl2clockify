@@ -90,6 +90,7 @@ def process_phase(idx, name, skip, func):
         skip_cnt,
         err_cnt,
     )
+    logger.info("-------------------------------------------------------------")
 
 
 def import_workspace(workspace, clue, start_time, end_time, args):
