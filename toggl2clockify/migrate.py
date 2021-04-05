@@ -1,23 +1,29 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+Migrate module
+Constructs a Clue object and iterates over workspaces to migrate data
+"""
+
 __author__ = "Markus Proeller"
 __copyright__ = "Copyright 2019, pieye GmbH (www.pieye.org)"
 __maintainer__ = "Markus Proeller"
 __email__ = "markus.proeller@pieye.org"
 
+
 import logging
 import os
 import json
 import datetime
-import dateutil
 import sys
+import dateutil
+
+
+from toggl2clockify.Clue import Clue
 
 logger = logging.getLogger("toggl2clockify")
 
-
-from toggl2clockify.args import parse as parse_args
-from toggl2clockify.Clue import Clue
 
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
@@ -29,8 +35,7 @@ def query_yes_no(question, default="yes"):
 
     The "answer" return value is True for "yes" or False for "no".
     """
-    valid = {"yes": True, "y": True, "ye": True,
-             "no": False, "n": False}
+    valid = {"yes": True, "y": True, "ye": True, "no": False, "n": False}
     if default is None:
         prompt = " [y/n] "
     elif default == "yes":
@@ -42,282 +47,279 @@ def query_yes_no(question, default="yes"):
 
     while True:
         sys.stdout.write(question + prompt)
-#        try:
-#            input = raw_input
-#        except NameError:
-#            pass
         choice = input().lower()
-        if default is not None and choice == '':
+        if default is not None and choice == "":
             return valid[default]
-        elif choice in valid:
+        if choice in valid:
             return valid[choice]
-        else:
-            sys.stdout.write("Please respond with 'yes' or 'no' "
-                             "(or 'y' or 'n').\n")
+        sys.stdout.write("Please respond with 'yes' or 'no' " "(or 'y' or 'n').\n")
+
 
 def load_config():
-    fName = os.path.abspath("config.json")
-    
+    """
+    Loads the config file and returns a tuple of required info
+    This function opens the json file then passes its logic to check_config
+    """
+    f_name = os.path.abspath("config.json")
+
     try:
-        with open(fName, "r") as f:
-            try: 
-                data = json.load(f)
-                return data
-            except json.JSONDecodeError as e:
-                logger.error("Error decoding file: %s" % str(e))
+        with open(f_name, "r") as file:
+            try:
+                data = json.load(file)
+                
+            except json.JSONDecodeError as error:
+                logger.error("Error decoding file: %s", str(error))        
     except FileNotFoundError:
-        logger.error("File %s not found"%(fName))
-    
-    return None
-        
+        logger.error("File %s not found", f_name)
+
+    return check_config(data, f_name)
 
 
-def check_config(data):
+def check_config(data, f_name):
     """
     Tries to parse each config item, and then returns a (success, values_tuple)
     """
 
     if "ClockifyKeys" not in data:
-        logger.error("json entry 'ClockifyKeys' missing in file %s"%fName)
+        logger.error("json entry 'ClockifyKeys' missing in file %s", f_name)
         return (False, None)
-        
-        
-    clockifyTokens = data["ClockifyKeys"]
-    if type(clockifyTokens) != type ([]):
+
+    c_keys = data["ClockifyKeys"]
+    if not isinstance(c_keys, list):
         logger.error("json entry 'ClockifyKeys' must be a list of strings")
         return (False, None)
 
-    if "TogglKey" not in data:
-        logger.error("json entry 'TogglKey' missing in file %s"%fName)
-        return (False, None)
-                
-    togglKey = data["TogglKey"]
-    if type(togglKey) != type(u""):
-        logger.error("json entry 'TogglKey' must be a string")
-        return (False, None)
-                
-    if "StartTime" not in data:
-        logger.error("json entry 'StartTime' missing in file %s"%fName)
+    if "ClockifyAdmin" not in data:
+        logger.error("json entry 'ClockifyAdmin' missing in file %s", f_name)
         return (False, None)
 
-    
+    c_admin = data["ClockifyAdmin"]
+    if not isinstance(c_admin, str):
+        logger.error("json entry 'ClockifyAdmin' must be a string")
+        return (False, None)
+
+    if "TogglKey" not in data:
+        logger.error("json entry 'TogglKey' missing in file %s", f_name)
+        return (False, None)
+
+    toggl_key = data["TogglKey"]
+    if not isinstance(toggl_key, str):
+        logger.error("json entry 'TogglKey' must be a string")
+        return (False, None)
+
+    if "StartTime" not in data:
+        logger.error("json entry 'StartTime' missing in file %s", f_name)
+        return (False, None)
+
     try:
-        startTime = dateutil.parser.parse(data["StartTime"])
-    except (ValueError, OverFlowError):
-        logger.error("Could not parse 'StartTime' correctly" +
-                     "make sure it is a ISO 8601 time string")
+        start_time = dateutil.parser.parse(data["StartTime"])
+    except (ValueError, OverflowError):
+        logger.error(
+            "Could not parse 'StartTime' correctly make sure it is a ISO 8601 time string"
+        )
         return (False, None)
 
     if "EndTime" in data:
         try:
-            endTime = dateutil.parser.parse(data["EndTime"])
-        except (ValueError, OverFlowError):
-            logger.error("Could not parse 'EndTime' correctly" +
-                         "make sure it is a ISO 8601 time string")
+            end_time = dateutil.parser.parse(data["EndTime"])
+        except (ValueError, OverflowError):
+            logger.error(
+                "Could not parse 'EndTime' correctly make sure it is a ISO 8601 time string"
+            )
             return (False, None)
     else:
-        logger.info("'EndTime' not found in config file, " +
-                    "importing all entries until now")
-        endTime = datetime.datetime.now()
+        logger.info(
+            "'EndTime' not found in config file importing all entries until now"
+        )
+        end_time = datetime.datetime.now()
 
-    
     if "Workspaces" in data:
         workspaces = data["Workspaces"]
-        if type(workspaces) != type([]):
+        if not isinstance(workspaces, list):
             logger.error("json entry 'Workspaces' must be a list")
             return (False, None)
     else:
         workspaces = None
-            
-    
-    if "ClockifyAdmin" not in data:
-        logger.error("json entry 'ClockifyAdmin' missing in file %s"%fName)
-        return (False, None)
-    else:
-        clockifyAdmin = data["ClockifyAdmin"]
-        if type(clockifyAdmin) != type(u""):
-            logger.error("json entry 'ClockifyAdmin' must be a string")
-            return (False, None)
-    
+
     if "FallbackUserMail" in data:
-        fallbackUserMail = data["FallbackUserMail"]
+        fallback_email = data["FallbackUserMail"]
     else:
-        fallbackUserMail = None
+        fallback_email = None
 
-    return (True, [clockifyTokens,togglKey,startTime,endTime,
-                   workspaces,clockifyAdmin,fallbackUserMail])
+    return (
+        True,
+        [
+            c_keys,
+            c_admin,
+            toggl_key,
+            start_time,
+            end_time,
+            workspaces,
+            fallback_email,
+        ],
+    )
 
-def get_workspaces(cl, workspaces):
+
+def get_workspaces(clue, workspaces):
     """
     Imports all workspaces if none were provided.
     Returns list of workspace names
     """
-    if workspaces == None:
-        logger.info("no workspaces specified in json file,"+
-                    "I'm trying to import all toggl workspaces...")
-        workspaces = cl.getTogglWorkspaces()
-        logger.info("The following workspaces were found " +
-                    "and will be imported now %s" % str(workspaces))
-    
+    if workspaces is None:
+        logger.info("no workspaces specified, importing all toggl workspaces...")
+        workspaces = clue.getTogglWorkspaces()
+        logger.info("The following workspaces will be imported: %s", str(workspaces))
+
     return workspaces
 
-def import_workspace(ws, idx, numWS, cl, startTime, endTime, args):
+
+def process_phase(idx, name, skip, func):
+    """
+    Process a single phase in the import process
+    """
+    total = 7
     logger.info("-------------------------------------------------------------")
-    logger.info("Starting to import workspace '%s' (%d of %d)"%(ws, idx, numWS))
-    logger.info("-------------------------------------------------------------")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 1 of 7: Import clients")
-    logger.info("-------------------------------------------------------------")
-    
-    if args.skipClients == False:
-        numEntries, numOk, numSkips, numErr = cl.syncClients(ws)    
-    else:        
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 1")
-    
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 1 of 7 (Import clients) completed " 
-                + "(entries=%d, ok=%d, skips=%d, err=%d)"
-                %  (numEntries, numOk, numSkips, numErr))
-    logger.info("-------------------------------------------------------------")
-    
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 2 of 7: Import tags")
-    logger.info("-------------------------------------------------------------")
-    if args.skipTags == False:
-        numEntries, numOk, numSkips, numErr = cl.syncTags(ws)
-    else:
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 2")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 2 of 7 (Import tags) completed " 
-                + "(entries=%d, ok=%d, skips=%d, err=%d)"
-                % (numEntries, numOk, numSkips, numErr))
+    logger.info("Phase %d of %d: %s", idx, total, name)
     logger.info("-------------------------------------------------------------")
 
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 3 of 7: Import groups")
-    logger.info("-------------------------------------------------------------")
-    if not args.skipGroups:
-        numEntries, numOk, numSkips, numErr = cl.syncGroups(ws)
+    if not skip:
+        entry_cnt, ok_cnt, skip_cnt, err_cnt = func()
     else:
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 3")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 3 of 7 (Import groups) completed " 
-                + "(entries=%d, ok=%d, skips=%d, err=%d)"
-                %  (numEntries, numOk, numSkips, numErr))
-    logger.info("-------------------------------------------------------------")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 4 of 7: Import projects")
-    logger.info("-------------------------------------------------------------")
-    if not args.skipProjects:
-        numEntries, numOk, numSkips, numErr = cl.syncProjects(ws)
-    else:
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 3")
-             
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 4 of 7 (Import projects) completed " 
-                + "(entries=%d, ok=%d, skips=%d, err=%d)"
-                %  (numEntries, numOk, numSkips, numErr))
-    logger.info("-------------------------------------------------------------")        
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 5 of 7: Import tasks")
-    logger.info("-------------------------------------------------------------")
-    if not args.skipTasks:
-        numEntries, numOk, numSkips, numErr = cl.syncTasks(ws)
-    else:
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 5")
-
+        entry_cnt, ok_cnt, skip_cnt, err_cnt = (0, 0, 0, 0)
+        logger.info("... skipping phase %d", idx)
 
     logger.info("-------------------------------------------------------------")
-    logger.info("Phase 6 of 7: Import time entries from %s until %s"
-                % (str(startTime), str(endTime)))
-    logger.info("-------------------------------------------------------------")
-    if not args.skipEntries:
-        numEntries, numOk, numSkips, numErr = cl.syncEntries(ws, startTime, until=endTime)
-    else:
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 6")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 6 of 7 (Import entries) completed " 
-                + "(entries=%d, ok=%d, skips=%d, err=%d)"
-                %  (numEntries, numOk, numSkips, numErr))
-    logger.info("-------------------------------------------------------------")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 7 of 7: Archiving projects")
-    logger.info("-------------------------------------------------------------")
-    if args.doArchive:
-        numEntries, numOk, numSkips, numErr = cl.syncProjectsArchive(ws)
-    else:
-        numEntries, numOk, numSkips, numErr = (0,0,0,0)
-        logger.info("... skipping phase 7")
-        
-    logger.info("-------------------------------------------------------------")
-    logger.info("Phase 7 of 7 (Archiving  projects) completed " 
-                + "(entries=%d, ok=%d, skips=%d, err=%d)"
-                %  (numEntries, numOk, numSkips, numErr))
-    logger.info("-------------------------------------------------------------")
-        
-    logger.info("Finished importing workspace '%s'" % (ws))
+    logger.info(
+        "Phase %d of %d (%s) completed (entries=%d, ok=%d, skips=%d, err=%d)",
+        idx,
+        total,
+        name,
+        entry_cnt,
+        ok_cnt,
+        skip_cnt,
+        err_cnt,
+    )
+
+
+def import_workspace(workspace, clue, start_time, end_time, args):
+    """
+    Imports a workspace in 7 steps
+    """
+
+    process_phase(
+        1,
+        "Import clients",
+        args.skipClients,
+        lambda: clue.syncClients(workspace),
+    )
+
+    process_phase(2, "Import tags", args.skipTags, lambda: clue.syncTags(workspace))
+
+    process_phase(
+        3, "Import groups", args.skipGroups, lambda: clue.syncGroups(workspace)
+    )
+
+    process_phase(
+        4, "Import projects", args.skipProjects, lambda: clue.syncProjects(workspace)
+    )
+
+    process_phase(5, "Import tasks", args.skipTasks, lambda: clue.syncTasks(workspace))
+
+    time_interval_desc = "Import time entries from %s until %s" % (
+        str(start_time),
+        str(end_time),
+    )
+
+    process_phase(
+        6,
+        time_interval_desc,
+        args.skipEntries,
+        lambda: clue.syncEntries(workspace, start_time, until=end_time),
+    )
+
+    process_phase(
+        7,
+        "Archive projects",
+        not args.doArchive,
+        lambda: clue.syncProjectsArchive(workspace),
+    )
+
+    logger.info("Finished importing workspace '%s'", workspace)
+
+
+def delete_entries(clue, workspaces, users):
+    """
+    Deletes entries for specified users
+    """
+    question = "All entries for users: %s in workspaces %s will be deleted.\n"
+    question %= (str(users), workspaces)
+    question += "This cannot be undone, do you want to proceed?"
+
+    if not query_yes_no(question, default="no"):
+        return
+
+    for workspace in workspaces:
+        logger.info("Deleting all entries in workspace %s", workspace)
+        for user in users:
+            clue.clockify.deleteEntriesOfUser(user, workspace)
+
+
+def wipe_workspace(clue, workspaces):
+    """
+    Deletes all specified workspaces, including clients/projects
+    """
+    question = "This will wipe your all of the following clockify workspaces:\n"
+    question += "\n".join(workspaces)
+    question += "Are you sure?"
+
+    if not query_yes_no(question, default="no"):
+        return
+
+    for workspace in workspaces:
+        logger.info("Deleting workspace %s", workspace)
+        clue.clockify.wipeOutWorkspace(workspace)
+
 
 def migrate(args):
     """
-    Migrates toggl to clockify in 7 stages. 
+    Migrates toggl to clockify in 7 stages.
     Alternatively wipes the entire workspace if --wipeAll is used.
     """
-    ok = False
 
-    data = load_config()
-    if data is None:
-        return
-            
-    ok, rv = check_config(data)
-    if not ok:
+    success, vals = load_config()
+    if not success:
         return
 
-    (clockifyTokens, togglKey, startTime, endTime, 
-    workspaces, clockifyAdmin, fallbackUserMail) = rv
+    # Unpack config into variables
+    (
+        c_keys,
+        c_admin,
+        toggl_key,
+        start_time,
+        end_time,
+        workspaces,
+        fallback_email,
+    ) = vals
 
+    clue = Clue(c_keys, c_admin, toggl_key, fallback_email)
 
-    cl = Clue(clockifyTokens, clockifyAdmin, togglKey, fallbackUserMail)
-    
-    workspaces = get_workspaces(cl, workspaces)
-    
-    # Option to delete specified entries and exit    
-    if args.deleteEntries != None:
-        question = ("All entries for user %s in workspaces %s will be deleted." 
-                   + "This cannot be undone, do you want to proceed"
-                   % (args.deleteEntries, workspaces))
-        if not query_yes_no(question, default="no"):
-            return
-        for ws in workspaces:
-            logger.info("deleting all entries in workspace %s" % ws)
-            for user in args.deleteEntries:
-                cl.clockify.deleteEntriesOfUser(user, ws)
-    
+    workspaces = get_workspaces(clue, workspaces)
+
+    # Option to delete specified user's entries and exit
+    if args.deleteEntries is not None:
+        delete_entries(clue, workspaces, args.deleteEntries)
+        return
+
     # Option to wipe all entries and exit
     if args.wipeAll:
-        question = "This will wipe your entire workspace. Are you sure?"
-        if not query_yes_no(question, default="no"):
-            return
-        else:
-            for ws in workspaces:
-                cl.clockify.wipeOutWorkspace(ws)
-            return
+        wipe_workspace(clue, workspaces)
+        return
 
-    numWS = len(workspaces)
-    idx = 1
-    for idx, ws in enumerate(workspaces):
-        import_workspace(ws, idx+1, numWS, cl, startTime, endTime, args)
-        
+    num_ws = len(workspaces)
+    for idx, workspace in enumerate(workspaces):
+        logger.info("-------------------------------------------------------------")
+        logger.info(
+            "Starting to import workspace '%s' (%d of %d)", workspace, idx + 1, num_ws
+        )
+        logger.info("-------------------------------------------------------------")
+        import_workspace(workspace, clue, start_time, end_time, args)

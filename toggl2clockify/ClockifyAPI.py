@@ -987,8 +987,8 @@ class ClockifyAPI:
     def wipeOutWorkspace(self, workspace):
         curUser = self._loadedUserEmail
         for user in self._APIusers:
-            self.logger.info("Deleting all entries from user %s"%user["email"])
-            self.deleteEntriesOfUser(user["email"] ,workspace)
+            self.logger.info("Deleting all entries from user %s", user["email"])
+            self.deleteEntriesOfUser(user["email"], workspace)
         
         self.deleteAllProjects(workspace)
         self.deleteAllClients(workspace)
