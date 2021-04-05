@@ -160,7 +160,7 @@ def wipe_workspace(clue, workspaces):
     Deletes all specified workspaces, including clients/projects
     """
     question = "This will wipe your all of the following clockify workspaces:\n"
-    question += "\n".join(workspaces)+"\n"
+    question += "\n".join(workspaces) + "\n"
     question += "Are you sure?"
 
     if not query_yes_no(question, default="no"):
