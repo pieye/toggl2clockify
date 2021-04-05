@@ -97,44 +97,21 @@ def import_workspace(workspace, clue, start_time, end_time, args):
     Imports a workspace in 7 steps
     """
 
-    process_phase(
-        1,
-        "Import clients",
-        args.skipClients,
-        lambda: clue.syncClients(workspace),
-    )
-
-    process_phase(2, "Import tags", args.skipTags, lambda: clue.syncTags(workspace))
-
-    process_phase(
-        3, "Import groups", args.skipGroups, lambda: clue.syncGroups(workspace)
-    )
-
-    process_phase(
-        4, "Import projects", args.skipProjects, lambda: clue.syncProjects(workspace)
-    )
-
-    process_phase(5, "Import tasks", args.skipTasks, lambda: clue.syncTasks(workspace))
-
     time_interval_desc = "Import time entries from %s until %s" % (
         str(start_time),
         str(end_time),
     )
-
-    process_phase(
-        6,
-        time_interval_desc,
-        args.skipEntries,
-        lambda: clue.syncEntries(workspace, start_time, until=end_time),
-    )
-
-    process_phase(
-        7,
-        "Archive projects",
-        not args.doArchive,
-        lambda: clue.syncProjectsArchive(workspace),
-    )
-
+    # fmt: off
+    process_phase(1, "Import clients",args.skipClients,lambda: clue.syncClients(workspace))
+    process_phase(2, "Import tags", args.skipTags, lambda: clue.syncTags(workspace))
+    process_phase(3, "Import groups", args.skipGroups, lambda: clue.syncGroups(workspace))
+    process_phase(4, "Import projects", args.skipProjects, lambda: clue.syncProjects(workspace))
+    process_phase(5, "Import tasks", args.skipTasks, lambda: clue.syncTasks(workspace))
+    process_phase(6, time_interval_desc, args.skipEntries,
+                  lambda: clue.syncEntries(workspace, start_time, until=end_time))
+    process_phase(7, "Archive projects", not args.doArchive,
+                  lambda: clue.syncProjectsArchive(workspace))
+    # fmt: on
     logger.info("Finished importing workspace '%s'", workspace)
 
 
