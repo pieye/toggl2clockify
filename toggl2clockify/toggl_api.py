@@ -112,9 +112,8 @@ class TogglAPI:
                 self.clients = []
             self._syncClients = False
         
-            f = open("toggl_clients.json", "w")
-            f.write(json.dumps(self.clients, indent=2))
-            f.close()
+            self.dump_json("toggl_clients.json", self.clients)
+            
 
         return self.clients
     
@@ -127,29 +126,27 @@ class TogglAPI:
             self.projects = req.json()
             self._syncProjects = False
             
-            f = open("toggl_projects.json", "w")
-            f.write(json.dumps(self.projects, indent=2))
-            f.close()
+            self.dump_json("toggl_projects.json", self.projects)
         
         return self.projects
 
     def getWorkspaceTasks(self, workspaceName):
         if self._syncTasks == True:
-            wsId = self.getWorkspaceID(workspaceName)       
+            wsId = self.getWorkspaceID(workspaceName)
             url = r"https://www.toggl.com/api/v8/workspaces/%d/tasks"%wsId
             req = self._request(url)
             self.tasks = req.json()
             self._syncTasks = False
 
-            f = open("toggl_tasks.json", "w")
-            f.write(json.dumps(self.tasks, indent=2))
-            f.close()
-        
-        return self.tasks            
+            self.dump_json("toggl_tasks.json", self.tasks)
+
+        return self.tasks
     
+    def dump_json(self, file_name, data):
+        with open(file_name, "w") as file:
+            file.write(json.dumps(data, indent=2))
+
     def getReports(self, workspaceName, since, until, cb, timeZone="CET"):
-#        entries = []
-        
         end = False
         nextStart = since
         while True:
@@ -166,16 +163,14 @@ class TogglAPI:
             cb(None, 0)
             
             nextStart = curStop
-            
-#        return entries
+
     
     def _getReports(self, workspaceName, since, until, cb, timeZone="CET"):
         since = since.isoformat()+timeZone
         until = until.isoformat()+timeZone
 
-        wsId = self.getWorkspaceID(workspaceName)        
+        wsId = self.getWorkspaceID(workspaceName)
         curPage = 1
-#       entries = []
         
         numEntries = 0
         while True:
@@ -196,10 +191,8 @@ class TogglAPI:
                 break
             else:
                 cb(data, totalCount)
-#               entries += jsonresp["data"]
                 
             self.logger.info ("Received %d out of %d entries" % (numEntries, totalCount))
-#        return entries
     
     def getProjectID(self, projectName, workspaceName):
         pID = None
