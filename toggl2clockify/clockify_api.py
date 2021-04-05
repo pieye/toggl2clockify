@@ -31,11 +31,11 @@ class MemberShip:
         self.memberShip = []
         self.workspace = ""
         
-    def addMembership(self, userMail, projectName, workspace, 
+    def addMembership(self, email, projectName, workspace, 
                       membershipType="PROJECT", membershipStatus="ACTIVE",
                       hourlyRate=None, manager=False):
         self.workspace = workspace
-        userID = self.connector.getUserIDByMail(userMail, workspace)
+        userID = self.connector.getUserIDByMail(email, workspace)
         #prjID = self.connector.getProjectID(projectName, workspace)
         
         membership = {}

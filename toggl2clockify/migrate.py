@@ -58,7 +58,7 @@ def get_workspaces(clue, workspaces):
     """
     if workspaces is None:
         logger.info("no workspaces specified, importing all toggl workspaces...")
-        workspaces = clue.getTogglWorkspaces()
+        workspaces = clue.get_toggl_workspaces()
         logger.info("The following workspaces will be imported: %s", str(workspaces))
 
     return workspaces
@@ -103,15 +103,15 @@ def import_workspace(workspace, clue, start_time, end_time, args):
         str(end_time),
     )
     # fmt: off
-    process_phase(1, "Import clients", args.skipClients,lambda: clue.syncClients(workspace))
-    process_phase(2, "Import tags", args.skipTags, lambda: clue.syncTags(workspace))
-    process_phase(3, "Import groups", args.skipGroups, lambda: clue.syncGroups(workspace))
-    process_phase(4, "Import projects", args.skipProjects, lambda: clue.syncProjects(workspace))
-    process_phase(5, "Import tasks", args.skipTasks, lambda: clue.syncTasks(workspace))
+    process_phase(1, "Import clients", args.skipClients,lambda: clue.sync_clients(workspace))
+    process_phase(2, "Import tags", args.skipTags, lambda: clue.sync_tags(workspace))
+    process_phase(3, "Import groups", args.skipGroups, lambda: clue.sync_groups(workspace))
+    process_phase(4, "Import projects", args.skipProjects, lambda: clue.sync_projects(workspace))
+    process_phase(5, "Import tasks", args.skipTasks, lambda: clue.sync_tasks(workspace))
     process_phase(6, time_interval_desc, args.skipEntries,
-                  lambda: clue.syncEntries(workspace, start_time, until=end_time))
+                  lambda: clue.sync_entries(workspace, start_time, until=end_time))
     process_phase(7, "Archive projects", not args.doArchive,
-                  lambda: clue.syncProjectsArchive(workspace))
+                  lambda: clue.sync_projects_archive(workspace))
     # fmt: on
     logger.info("Finished importing workspace '%s'", workspace)
 
