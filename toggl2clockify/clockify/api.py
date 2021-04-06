@@ -97,7 +97,7 @@ class ClockifyAPI:
         self.thread_pool = ThreadPool(int(self.requests_per_second))
 
         self._api_users = []
-        self.test_tokens(api_tokens, admin_email)
+        self.test_tokens(api_tokens)
         self._loaded_user_email = None
         self._load_user(self._api_users[0]["email"])
         self.projects = []
@@ -454,8 +454,7 @@ class ClockifyAPI:
                 self.projects = self.multi_get_request(url)
 
                 self.logger.info(
-                    "Finished getting clockify projects, \
-                    saving results to clockify_projects.json"
+                    "Finished getting clockify projects, saving results to clockify_projects.json"
                 )
 
                 dump_json("clockify_projects.json", self.projects)
@@ -1255,22 +1254,22 @@ class ClockifyAPI:
         Deletes all projects in the workspace
         """
         cur_user = self._loaded_user_email  # store current user
-        for user in self._api_users:
-            self._load_user(user["email"])
-            self.logger.info("Deleting all project from user %s", user["email"])
-            projects = self.get_projects(workspace)
 
-            project_cnt = len(projects)
-            for idx, project in enumerate(projects):
-                c_name = get_clientname_from_dict(project)
-                p_name = get_projname_from_dict(project)
-                msg = "deleting project %s (%d of %d)" % (
-                    str(p_name) + "|" + str(c_name),
-                    idx + 1,
-                    project_cnt,
-                )
-                self.logger.info(msg)
-                self.delete_project(project)
+        self._load_user(self.admin_email)
+        self.logger.info("Deleting all projects...")
+        projects = self.get_projects(workspace)
+
+        project_cnt = len(projects)
+        for idx, project in enumerate(projects):
+            c_name = get_clientname_from_dict(project)
+            p_name = get_projname_from_dict(project)
+            msg = "deleting project %s (%d of %d)" % (
+                str(p_name) + "|" + str(c_name),
+                idx + 1,
+                project_cnt,
+            )
+            self.logger.info(msg)
+            self.delete_project(project)
 
         self._load_user(cur_user)  # restore previous user
 
