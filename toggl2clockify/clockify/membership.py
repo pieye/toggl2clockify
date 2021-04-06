@@ -2,10 +2,12 @@
 Membership class. Links workspace, user and manager
 """
 
+
 class MemberShip:
     """
     Membership class. Links workspace, user and manager
     """
+
     def __init__(self, api):
         self.connector = api
         self.memberships = []

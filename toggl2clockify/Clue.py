@@ -15,22 +15,11 @@ import datetime
 import logging
 import sys
 
-import dateutil.parser
-import pytz
-
 import toggl2clockify.toggl_api as toggl_api
 import toggl2clockify.clockify.api as clockify_api
-from toggl2clockify.clockify.hourly_rate import HourlyRate
 from toggl2clockify.clockify.membership import MemberShip
 from toggl2clockify.clockify.retval import RetVal
-
-def time_to_utc(time):
-    """
-    Converts time from its relevant timezone to UTC
-    """
-    time = dateutil.parser.parse(time)
-    utc = time.astimezone(pytz.UTC).isoformat().split("+")[0]
-    return dateutil.parser.parse(utc)
+from toggl2clockify.clockify.entry import Entry
 
 
 class Clue:
@@ -159,7 +148,7 @@ class Clue:
         proj_client = None
 
         toggl_projs = self.toggl.projects
-        clock_projs = self.clockify.projects
+        clock_projs = self.clockify.projects.data
 
         # grab project
         for t_proj in toggl_projs:
@@ -221,7 +210,7 @@ class Clue:
 
         self.logger.info("Number of Toggl projects found: %s", len(self.toggl.projects))
         self.logger.info(
-            "Number of Clockify projects found: %s", len(self.clockify.projects)
+            "Number of Clockify projects found: %s", len(self.clockify.projects.data)
         )
 
         for idx, task in enumerate(tasks):
@@ -255,7 +244,7 @@ class Clue:
         """
         toggl_projs = self.toggl.get_projects(workspace)
         self.logger.info("Number of total Projects in Toggl: %d", len(toggl_projs))
-        
+
         clock_projs = self.clockify.get_projects(workspace)
         clock_proj_names = {cPrj["name"] for cPrj in clock_projs}
 
@@ -473,7 +462,7 @@ class Clue:
 
         return num_prjs, num_ok, num_skips, num_err
 
-    def verify_email(self, toggl_uid, toggl_username):
+    def verify_email(self, toggl_uid, toggl_username, description):
         """
         Verifies and returns the email associated with a toggl User ID
         """
@@ -486,7 +475,9 @@ class Clue:
         except RuntimeError:
             try:
                 # attempt to match user via username
-                c_id = self.clockify.get_userid_from_name(toggl_username, self._workspace)
+                c_id = self.clockify.get_userid_from_name(
+                    toggl_username, self._workspace
+                )
                 self.logger.info(
                     "user '%s' found in clockify workspace as ID=%s",
                     toggl_username,
@@ -498,11 +489,17 @@ class Clue:
                      but found a match in clockify workspace %s...",
                     toggl_uid,
                     toggl_username,
-                    email
+                    email,
                 )
             except RuntimeError:
                 # skip user entirely
                 if self._skip_inv_toggl_users:
+                    self.logger.info(
+                        "user ID %s (name='%s') not in toggl workspace, skipping entry %s...",
+                        toggl_uid,
+                        toggl_username,
+                        description,
+                    )
                     return None
                 # assign task to the fallback email address.
                 if self.clockify.fallback_email is not None:
@@ -517,66 +514,40 @@ class Clue:
 
         return email
 
-
     def on_new_reports(self, entries, total_count):
         """
         Queues entries into format suitable for clockify
         Then asks clockify to add the entries
         """
 
-        entry_data = []
+        entry_tasks = []
 
-        for idx, entry in enumerate(entries):
-            start = time_to_utc(entry["start"])
-            if entry["end"] is not None:
-                end = time_to_utc(entry["end"])
-            else:
-                end = None
-            description = entry["description"]
-            project_name = entry["project"]
-            user_id = entry["uid"]
-            billable = entry["is_billable"]
-            tag_names = entry["tags"]
-            username = entry["user"]
-            task_name = entry["task"]
-            client_name = entry["client"]
+        for idx, t_entry in enumerate(entries):
+            c_entry = Entry(t_entry)
 
             self.logger.info(
                 "Queuing entry %s, project: %s (%d of %d)",
-                description,
-                str(project_name) + "|" + str(client_name),
+                c_entry.description,
+                str(c_entry.project_name) + "|" + str(c_entry.client_name),
                 idx,
                 total_count,
             )
 
-            email = self.verify_email(user_id, username)
-            if email is None and self._skip_inv_toggl_users:
-                self.logger.warning(
-                    "user ID %s (name='%s') not in toggl workspace, skipping entry %s...",
-                    user_id,
-                    username,
-                    description,
-                )
+            email = self.verify_email(t_entry["uid"],
+                                      t_entry["user"],
+                                      t_entry["description"])
+            if email is None:
                 self._num_skip += 1
                 continue
 
-            entry_data.append(
-                [
-                    start,
-                    description,
-                    project_name,
-                    client_name,
-                    email,
-                    self._workspace,
-                    "Z",
-                    end,
-                    billable,
-                    tag_names,
-                    task_name,
-                ]
-            )
+            c_entry.email = email
+            c_entry.workspace = self._workspace
+            c_entry.timezone = "Z"
 
-        results = self.clockify.add_entries_threaded(entry_data)
+            entry_tasks.append(c_entry)
+
+        results = self.clockify.add_entries_threaded(entry_tasks)
+
         for retval, _ in results:
             if retval == RetVal.ERR:
                 self._num_err += 1

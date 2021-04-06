@@ -19,28 +19,8 @@ import json
 import requests
 
 from toggl2clockify.clockify.retval import RetVal
-
-
-def dump_json(file_name, data):
-    """
-    dumps a dictionary into file_name
-    """
-    with open(file_name, "w") as file:
-        file.write(json.dumps(data, indent=2))
-
-
-def get_task_id_from_name(task_name, project_tasks):
-    """
-    get task_id from task_name
-    """
-    result = None
-    if project_tasks is not None:
-        for task in project_tasks:
-            if task["name"] == task_name:
-                result = task["id"]
-    if result is None:
-        raise RuntimeError("Task %s not found." % (task_name))
-    return result
+from toggl2clockify.clockify.entry import EntryQuery
+from toggl2clockify.clockify.cached_list import CachedList
 
 
 def match_client(project_data, client_name):
@@ -78,34 +58,38 @@ class ClockifyAPI:
     https://clockify.me/developers-api
     """
 
+    # API limits. Add a small buffer so we dont hit the limit
     requests_per_second = 10.0  # Rate limit is 10/s
-    # Add slight time buffer so we don't trigger limit
     time_per_request = 1.0 / (requests_per_second - 1)
+
+    # API URLS
+    base_url = "https://clockify.me/api/v1"
+    base_url_api = "https://api.clockify.me/api/v1"
 
     def __init__(self, api_tokens, admin_email="", fallback_email=None):
         self.logger = logging.getLogger("toggl2clockify")
-        self.url = "https://clockify.me/api/v1"
-        self.url_working = "https://api.clockify.me/api/v1"
-        self._resync_clients = True
-        self._resync_users = True
-        self._resync_projects = True
-        self._resync_tags = True
-        self._resync_groups = True
-        self._resync_tasks = True
+
+        projects_url = self.base_url_api + "/workspaces/%s/projects"
+        users_url = self.base_url + "/workspace/%s/users"
+        usergroups_url = self.base_url_api + "/workspaces/%/userGroups"
+        tags_url = self.base_url + "/workspaces/%s/tags"
+        clients_url = self.base_url + "/workspaces/%s/clients"
+
+        self.projects = CachedList(projects_url, "projects", True)
+        self.users = CachedList(users_url, "users", False)
+        self.usergroups = CachedList(usergroups_url, "usergroups", True)
+        self.tags = CachedList(tags_url, "tags", True)
+        self.clients = CachedList(clients_url, "clients", True)
+
         self.admin_email = admin_email
         self.fallback_email = fallback_email
         self.thread_pool = ThreadPool(int(self.requests_per_second))
+        # self.thread_pool = ThreadPool(int(1))
 
         self._api_users = []
         self.test_tokens(api_tokens)
         self._loaded_user_email = None
         self._load_user(self._api_users[0]["email"])
-        self.projects = []
-        self.users = []
-        self.usergroups = []
-        self.tags = []
-        self.clients = []
-        self.project_tasks = []
 
         self._get_workspaces()
 
@@ -119,7 +103,7 @@ class ClockifyAPI:
             self.logger.info("testing clockify APIKey %s", token)
 
             self.api_token = token
-            url = self.url + "/user"
+            url = self.base_url + "/user"
             retval = self._request(url)
             if retval.status_code != 200:
                 raise RuntimeError(
@@ -193,7 +177,7 @@ class ClockifyAPI:
                 self.api_token = user["token"]
                 self.user_email = user["email"]
                 self.user_id = user["id"]
-                url = self.url + "/user"
+                url = self.base_url + "/user"
                 retval = self._request(url)
                 if retval.status_code != 200:
                     raise RuntimeError(
@@ -312,7 +296,7 @@ class ClockifyAPI:
         """
         Return current workspaces
         """
-        url = self.url + "/workspaces"
+        url = self.base_url + "/workspaces"
         retval = self._request(url)
         if retval.status_code == 200:
             self.workspaces = retval.json()
@@ -331,7 +315,7 @@ class ClockifyAPI:
         self._load_admin()
 
         ws_id = self.get_workspace_id(workspace)
-        url = self.url + "/workspaces/%s/clients" % ws_id
+        url = self.base_url + "/workspaces/%s/clients" % ws_id
         params = {"name": name}
         retval = self._request(url, body=params, typ="POST")
 
@@ -348,7 +332,7 @@ class ClockifyAPI:
                 retval = RetVal.ERR
         else:
             retval = RetVal.OK
-            self._resync_clients = True
+            self.clients.need_resync = True
 
         self._load_user(cur_user)
 
@@ -358,23 +342,8 @@ class ClockifyAPI:
         """
         Lazily loads clients into self.clients and returns it
         """
-        if self._resync_clients:
-            cur_user = self._loaded_user_email
-            self._load_admin()
-
-            ws_id = self.get_workspace_id(workspace)
-            url = self.url + "/workspaces/%s/clients" % ws_id
-            self.clients = self.multi_get_request(url)
-            self._resync_clients = False
-
-            self.logger.info(
-                "finished getting clockify clients, saving results to clockify_clients.json"
-            )
-
-            dump_json("clockify_clients.json", self.clients)
-
-            self._load_user(cur_user)
-        return self.clients
+        workspace_id = self.get_workspace_id(workspace)
+        return self.clients.get_data(self, workspace_id)
 
     def get_tasks_from_project_id(self, workspace, project_id):
         """
@@ -385,22 +354,20 @@ class ClockifyAPI:
 
         ws_id = self.get_workspace_id(workspace)
 
-        url = self.url + "/workspaces/%s/projects/%s/tasks" % (ws_id, project_id)
-        self.project_tasks = self.multi_get_request(url)
+        url = self.base_url + "/workspaces/%s/projects/%s/tasks" % (ws_id, project_id)
+        project_tasks = self.multi_get_request(url)
 
         self._load_user(cur_user)
 
-        return self.project_tasks
+        return project_tasks
 
-    def get_client_name(self, client_id, workspace, use_cache=False, null_ok=False):
+    def get_client_name(self, client_id, workspace, null_ok=False):
         """
         get client_name from client_id
         """
         result = None
-        if use_cache:
-            clients = self.clients
-        else:
-            clients = self.get_clients(workspace)
+
+        clients = self.get_clients(workspace)
 
         for client in clients:
             if client["id"] == client_id:
@@ -416,15 +383,13 @@ class ClockifyAPI:
 
         return result
 
-    def get_client_id(self, client_name, workspace, use_cache=False, null_ok=False):
+    def get_client_id(self, client_name, workspace, null_ok=False):
         """
         Get client_id from client_name
         """
         result = None
-        if use_cache:
-            clients = self.clients
-        else:
-            clients = self.get_clients(workspace)
+
+        clients = self.get_clients(workspace)
 
         for client in clients:
             if client["name"] == client_name:
@@ -439,41 +404,23 @@ class ClockifyAPI:
             )
         return result
 
-    def get_projects(self, workspace, use_cache=False):
+    def get_projects(self, workspace):
         """
         Lazily loads self.projects and returns it
         """
-        if self._resync_projects:
+        ws_id = self.get_workspace_id(workspace)
+        return self.projects.get_data(self, ws_id)
 
-            if not use_cache:
-                self.projects = []
-
-                ws_id = self.get_workspace_id(workspace)
-                url = self.url_working + "/workspaces/%s/projects" % ws_id
-
-                self.projects = self.multi_get_request(url)
-
-                self.logger.info(
-                    "Finished getting clockify projects, saving results to clockify_projects.json"
-                )
-
-                dump_json("clockify_projects.json", self.projects)
-            self._resync_projects = False
-
-        return self.projects
-
-    def get_project_id(self, proj_name, client, workspace, use_cache=False):
+    def get_project_id(self, proj_name, client, workspace):
         """
         Returns project_id given project's name and client's name
         """
         result = None
-        if use_cache:
-            projects = self.projects
-        else:
-            projects = self.get_projects(workspace)
+
+        projects = self.get_projects(workspace)
 
         for project in projects:
-            if project["name"] == proj_name and match_client(proj_name, client):
+            if project["name"] == proj_name and match_client(project, client):
                 result = project["id"]
                 break
 
@@ -484,14 +431,11 @@ class ClockifyAPI:
             )
         return result
 
-    def get_project(self, project_id, workspace, use_cache=False):
+    def get_project(self, project_id, workspace):
         """
         Get project data (json with name, id, clients etc)
         """
-        if use_cache:
-            projects = self.projects
-        else:
-            projects = self.get_projects(workspace)
+        projects = self.get_projects(workspace)
 
         for project in projects:
             if project["id"] == project_id:
@@ -502,31 +446,15 @@ class ClockifyAPI:
         """
         Reloads self.users lazily
         """
-        if self._resync_users:
-            cur_user = self._loaded_user_email
-            self._load_admin()
-
-            ws_id = self.get_workspace_id(workspace)
-            url = self.url + "/workspace/%s/users" % ws_id
-            retval = self._request(url, typ="GET")
-            self.users = retval.json()
-            self._resync_users = False
-
-            self.logger.info(
-                "finsihed getting clockify users, saving results to clockify_users.json"
-            )
-
-            dump_json("clockify_users.json", self.users)
-
-            self._load_user(cur_user)
-        return self.users
+        ws_id = self.get_workspace_id(workspace)
+        return self.users.get_data(self, ws_id)
 
     def get_project_users(self, workspace_id, project_id):
         """
         Returns list of users in project
         """
         user_ids = []
-        url = self.url_working + "/workspaces/%s/projects/%s/users" % (
+        url = self.base_url_api + "/workspaces/%s/projects/%s/users" % (
             workspace_id,
             project_id,
         )
@@ -611,7 +539,7 @@ class ClockifyAPI:
         if client is not None:
             client_id = self.get_client_id(client, workspace, null_ok=True)
 
-        url = self.url + "/workspaces/%s/projects" % workspace_id
+        url = self.base_url_api + "/workspaces/%s/projects" % workspace_id
         params = {
             "name": name,
             "isPublic": public,
@@ -628,7 +556,7 @@ class ClockifyAPI:
             params["hourlyRate"] = hourly_rate.rate
         retval = self._request(url, body=params, typ="POST")
         if retval.status_code == 201:
-            self._resync_projects = True
+            self.projects.need_resync = True
             retval = RetVal.OK
         elif retval.status_code == 400:
             retval = RetVal.EXISTS
@@ -653,10 +581,8 @@ class ClockifyAPI:
         """
         Add groups to project
         """
-        # API fields to POST: {userIds = [], userGroupIds = []}
-        # From: https://clockify.github.io/clockify_api_docs/#operation--workspaces--workspaceId--projects--projectId--team-post
 
-        url = self.url_working + "/workspaces/%s/projects/%s/team" % (ws_id, proj_id)
+        url = self.base_url_api + "/workspaces/%s/projects/%s/team" % (ws_id, proj_id)
 
         user_ids = []
         user_group_ids = []
@@ -707,38 +633,22 @@ class ClockifyAPI:
         """
         Lazily load usergroups into self.usergroups and return them
         """
-        if self._resync_groups:
-            cur_user = self._loaded_user_email
-            self._load_admin()
-
-            self.usergroups = []
-            ws_id = self.get_workspace_id(workspace)
-            url = self.url_working + "/workspaces/%s/userGroups" % ws_id
-            self.usergroups = self.multi_get_request(url)
-            self._resync_groups = False
-
-            self.logger.info(
-                "Finished getting clockify groups, saving results to clockify_groups.json"
-            )
-
-            dump_json("clockify_groups.json", self.usergroups)
-
-            self._load_user(cur_user)
-        return self.usergroups
+        ws_id = self.get_workspace_id(workspace)
+        return self.usergroups.get_data(self, ws_id)
 
     def add_usergroup(self, group_name, workspace):
         """
-        Add usergrup to workspace
+        Add usergroup to workspace
         """
         cur_user = self._loaded_user_email
         self._load_admin()
 
         ws_id = self.get_workspace_id(workspace)
-        url = self.url_working + "/workspaces/%s/userGroups/" % ws_id
+        url = self.base_url_api + "/workspaces/%s/userGroups/" % ws_id
         params = {"name": group_name}
         retval = self._request(url, body=params, typ="POST")
         if retval.status_code == 201:
-            self._resync_groups = True
+            self.usergroups.need_resync = True
             retval = RetVal.OK
         elif retval.status_code == 400:
             retval = RetVal.EXISTS
@@ -789,24 +699,8 @@ class ClockifyAPI:
         """
         Lazily loads tags into self.tags and returns them.
         """
-        if self._resync_tags:
-            cur_user = self._loaded_user_email
-            self._load_admin()
-
-            self.tags = []
-            ws_id = self.get_workspace_id(workspace)
-            url = self.url + "/workspaces/%s/tags" % ws_id
-            self.tags = self.multi_get_request(url)
-            self._resync_tags = False
-
-            self.logger.info(
-                "Finished getting clockify tags, saving results to clockify_tags.json"
-            )
-
-            dump_json("clockify_tags.json", self.tags)
-
-            self._load_user(cur_user)
-        return self.tags
+        ws_id = self.get_workspace_id(workspace)
+        return self.tags.get_data(self, ws_id)
 
     def add_tag(self, tag_name, workspace):
         """
@@ -817,11 +711,11 @@ class ClockifyAPI:
         self._load_admin()
 
         ws_id = self.get_workspace_id(workspace)
-        url = self.url + "/workspaces/%s/tags" % ws_id
+        url = self.base_url + "/workspaces/%s/tags" % ws_id
         params = {"name": tag_name}
         retval = self._request(url, body=params, typ="POST")
         if retval.status_code == 201:
-            self._resync_tags = True
+            self.tags.need_resync = True
             retval = RetVal.OK
         elif retval.status_code == 400:
             retval = RetVal.EXISTS
@@ -874,14 +768,13 @@ class ClockifyAPI:
         cur_user = self._loaded_user_email
         self._load_admin()
 
-        url = self.url + "/workspaces/%s/projects/%s/tasks/" % (
+        url = self.base_url + "/workspaces/%s/projects/%s/tasks/" % (
             workspace_id,
             project_id,
         )
         params = {"name": name, "projectId": project_id, "estimate": estimate}
         retval = self._request(url, body=params, typ="POST")
         if retval.status_code == 201:
-            self._resync_tasks = True
             retval = RetVal.OK
         elif retval.status_code == 400:
             retval = RetVal.EXISTS
@@ -897,224 +790,99 @@ class ClockifyAPI:
         self._load_user(cur_user)
         return retval
 
-    def add_entries_threaded(self, entry_tasks):
+    def add_entries_threaded(self, entries):
         """
-        entry_tasks is a list of lists, each task represents an entry to add, and its contents the arguments
-        to _add_entry_threaded
+        entries is a list Entries
         """
         # Create a shared status array, add it to the entry_task
         # so they can update the shared status array can be updated
-        num_tasks = len(entry_tasks)
+        num_tasks = len(entries)
         status_indicator = [0, num_tasks]
-        for task in entry_tasks:
-            task.append(status_indicator)
 
-        return self.thread_pool.starmap(self._add_entry_threaded, entry_tasks)
+        # create a new task
+        new_tasks = [[entry, status_indicator] for entry in entries]
 
-    def _add_entry_threaded(
-        self,
-        start,
-        description,
-        proj_name,
-        client_name,
-        email,
-        workspace,
-        timezone,
-        end,
-        billable,
-        tag_names,
-        task_name,
-        threaded_status,
-    ):
+        return self.thread_pool.starmap(self._add_entry_threaded, new_tasks)
+
+    def _add_entry_threaded(self, entry, status_indicator):
         """
-        Private mutlithreaded entry adding wrapper
+        Private multithreaded entry adding wrapper
         """
-        result = self.add_entry(
-            start,
-            description,
-            proj_name,
-            client_name,
-            email,
-            workspace,
-            timezone,
-            end,
-            billable,
-            tag_names,
-            task_name,
-        )
-        threaded_status[0] += 1
-        self.logger.info(
-            "Added Entries: (%d / %d)", threaded_status[0], threaded_status[1]
-        )
+        result = self.add_entry(entry)
+        status_indicator[0] += 1
+
+        if result[0] == RetVal.EXISTS:
+            msg = "Added entries (skipped) (%d / %d)"
+        else:
+            msg = "Added entries: (%d / %d)"
+        msg = msg % tuple(status_indicator)
+        self.logger.info(msg)
         return result
 
-    def add_entry(
-        self,
-        start,
-        description,
-        project_name,
-        client_name,
-        email,
-        workspace,
-        timezone="Z",
-        end=None,
-        billable=False,
-        tag_names=None,
-        task_name=None,
-    ):
+    def is_duplicate_entry(self, source, entries):
+        """
+        Returns if source exists inside entries
+        """
+        for entry in entries:
+            different = source.diff_entry(entry, self, self.user_id)
+            same = not different
+            if same:
+                return True
+        return False
+
+    def add_entry(self, entry):
         """
         Adds a given entry
         """
-        retval = self._load_user(email)
-        entry = None
+        retval = self._load_user(entry.email)
+        if retval != RetVal.OK:
+            return retval, None
 
-        if retval == RetVal.OK:
-            ws_id = self.get_workspace_id(workspace)
-            url = self.url + "/workspaces/%s/time-entries" % ws_id
+        # get clockify ids
+        entry.process_ids(self)
+        api_dict = entry.to_api_dict()
 
-            task_id = None
-            if project_name is not None:
-                proj_id = self.get_project_id(project_name, client_name, workspace)
+        query = EntryQuery(entry)
+        retval, web_entries = self.get_time_entries(query)
 
-                if task_name is not None:
-                    proj_tasks = self.get_tasks_from_project_id(workspace, proj_id)
-                    task_id = get_task_id_from_name(task_name, proj_tasks)
-                    self.logger.info(
-                        "Found task %s in project %s", task_name, project_name
-                    )
-            else:
-                self.logger.info("no project in entry %s", description)
+        if retval != RetVal.OK:  # Fail to get web entries
+            return RetVal.ERR, None
 
-            start_time = start.isoformat() + timezone
-            if end is not None:
-                end = end.isoformat() + timezone
+        # Check if the entry already exists
+        if self.is_duplicate_entry(entry, web_entries):
+            return RetVal.EXISTS, None
 
-            params = {
-                "start": start_time,
-                "billable": billable,
-                "description": description,
-            }
-
-            if project_name is not None:
-                params["projectId"] = proj_id
-
-            if task_id is not None:
-                params["taskId"] = task_id
-
-            if end is not None:
-                params["end"] = end
-            else:
-                params["end"] = start_time
-
-            if tag_names is not None:
-                tag_ids = []
-                for tag in tag_names:
-                    tid = self.get_tag_id(tag, workspace)
-                    tag_ids.append(tid)
-                params["tagIds"] = tag_ids
-
-            retval, entries = self.get_time_entries(
-                email,
-                workspace,
-                description,
-                project_name,
-                client_name,
-                start,
-                timezone=timezone,
+        # actually add the entry
+        ws_id = entry.workspace_id
+        url = self.base_url + "/workspaces/%s/time-entries" % ws_id
+        retval = self._request(url, body=api_dict, typ="POST")
+        if not retval.ok:
+            # Failed to add entry
+            self.logger.warning(
+                "Error adding time entry:\n%s, status code=%d, msg=%s",
+                json.dumps(api_dict, indent=2),
+                retval.status_code,
+                retval.text,
             )
+            return RetVal.ERR, None
 
-            if retval == RetVal.OK:
-                if entries != []:
-                    # filter data
-                    filtered_data = []
-                    for entry in entries:
-                        has_diff = False
-                        if params["start"] != entry["timeInterval"]["start"]:
-                            has_diff = True
-                        # self.logger.info("entry diff @start: %s %s"%(str(params["start"]), str(d['timeInterval']["start"])))
-                        if (
-                            "projectId" in params
-                            and params["projectId"] != entry["projectId"]
-                        ):
-                            has_diff = True
-                        # self.logger.info("entry diff @projectID: %s %s"%(str(params["projectId"]), str(d['projectId'])))
-                        if params["description"] != entry["description"]:
-                            has_diff = True
-                        # self.logger.info("entry diff @desc: %s %s"%(str(params["description"]), str(d['description'])))
-                        if self.user_id != entry["userId"]:
-                            has_diff = True
-                        # self.logger.info("entry diff @userID: %s %s"%(str(self.userID), str(d['userId'])))
-                        if tag_names is not None:
-                            tag_ids_recved = entry["tagIds"]
-                            tag_ids_recved = tag_ids_recved or []
-                            tag_names_recved = []
-                            for tag_id in tag_ids_recved:
-                                tag_names_recved.append(
-                                    self.get_tag_name(tag_id, workspace)
-                                )
-                            if set(tag_names) != set(tag_names_recved):
-                                # self.logger.info("entry diff @tagNames: %s %s"%(str(set(tagNames)), str(set(tagNamesRcv))))
-                                has_diff = True
+        self.logger.info("Added entry:\n%s", json.dumps(api_dict, indent=2))
+        return RetVal.OK, retval.json()
 
-                        if not has_diff:
-                            filtered_data.append(entry)
-
-                    entries = filtered_data
-
-                if not entries:
-                    retval = self._request(url, body=params, typ="POST")
-                    if retval.ok:
-                        self.logger.info(
-                            "Added entry:\n%s", json.dumps(params, indent=2)
-                        )
-                        entry = retval.json()
-                        retval = RetVal.OK
-                    else:
-                        self.logger.warning(
-                            "Error adding time entry:\n%s, status code=%d, msg=%s",
-                            json.dumps(params, indent=2),
-                            retval.status_code,
-                            retval.text,
-                        )
-                        retval = RetVal.ERR
-                else:
-                    retval = RetVal.EXISTS
-            else:
-                retval = RetVal.ERR
-
-        return retval, entry
-
-    def get_time_entries(
-        self,
-        email,
-        workspace,
-        description,
-        project_name,
-        client_name,
-        start,
-        timezone="Z",
-    ):
+    def get_time_entries(self, query):
         """
         Returns the time entries for a given user
         """
         data = None
-        retval = self._load_user(email)
+        retval = self._load_user(query.email)
 
         if retval == RetVal.OK:
-            ws_id = self.get_workspace_id(workspace)
-            url = self.url + "/workspaces/%s/user/%s/time-entries" % (
+            ws_id = self.get_workspace_id(query.workspace)
+            url = self.base_url + "/workspaces/%s/user/%s/time-entries" % (
                 ws_id,
                 self.user_id,
             )
-            params = {"description": description}
-
-            if start is not None:
-                start = start.isoformat() + timezone
-                params["start"] = start
-
-            if project_name is not None:
-                proj_id = self.get_project_id(project_name, client_name, workspace)
-                params["project"] = proj_id
+            params = query.to_api_dict(self)
 
             retval = self._request(url, body=params, typ="GET")
             if retval.ok:
@@ -1122,9 +890,10 @@ class ClockifyAPI:
                 retval = RetVal.OK
             else:
                 self.logger.warning(
-                    "Error getTimeEntryForUser, status code=%d, msg=%s",
+                    "Error get_time_entries, status code=%d, msg=%s\n%s",
                     retval.status_code,
                     retval.reason,
+                    params,
                 )
                 retval = RetVal.ERR
 
@@ -1139,7 +908,7 @@ class ClockifyAPI:
         project["archived"] = True
         proj_name = get_projname_from_dict(project)
 
-        url = self.url_working + "/workspaces/%s/projects/%s" % (workspace_id, proj_id)
+        url = self.base_url_api + "/workspaces/%s/projects/%s" % (workspace_id, proj_id)
         retval = self._request(url, body=project, typ="PUT")
         if retval.status_code == 200:
             retval = RetVal.OK
@@ -1161,9 +930,8 @@ class ClockifyAPI:
         ws_id = self.get_workspace_id(workspace)
         while True:
             self.logger.info("Fetching more entries (50 at a time):")
-            retval, entries = self.get_time_entries(
-                email, workspace, "", None, None, None, ""
-            )
+            query = EntryQuery(email, workspace)
+            retval, entries = self.get_time_entries(query)
             entry_cnt = 0
             if retval == RetVal.OK:
                 cur_user = self._loaded_user_email
@@ -1214,7 +982,7 @@ class ClockifyAPI:
         """
         Returns a direct requests.request result, including retval.ok, retval.status_code etc.
         """
-        url = self.url + "/workspaces/%s/time-entries/%s" % (ws_id, entry_id)
+        url = self.base_url + "/workspaces/%s/time-entries/%s" % (ws_id, entry_id)
         retval = self._request(url, typ="DELETE")
         return retval
 
@@ -1234,11 +1002,11 @@ class ClockifyAPI:
 
         # Now we can delete.
         self.logger.info("Deleting project:")
-        url = self.url_working + "/workspaces/%s/projects/%s" % (ws_id, proj_id)
+        url = self.base_url_api + "/workspaces/%s/projects/%s" % (ws_id, proj_id)
         retval = self._request(url, typ="DELETE")
 
         if retval.ok:
-            self._resync_projects = True
+            self.projects.need_resync = True
             self.logger.info("...ok")
             return RetVal.OK
 
@@ -1295,10 +1063,13 @@ class ClockifyAPI:
         """
         Deletes a given client
         """
-        url = self.url_working + "/workspaces/%s/clients/%s" % (workspace_id, client_id)
+        url = self.base_url_api + "/workspaces/%s/clients/%s" % (
+            workspace_id,
+            client_id,
+        )
         retval = self._request(url, typ="DELETE")
         if retval.ok:
-            self._resync_clients = True
+            self.clients.need_resync = True
             return RetVal.OK
 
         self.logger.warning(
