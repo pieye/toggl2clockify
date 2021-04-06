@@ -146,7 +146,7 @@ def wipe_workspace(clue, workspaces):
 
     for workspace in workspaces:
         logger.info("Deleting workspace %s", workspace)
-        clue.clockify.wipeOutWorkspace(workspace)
+        clue.clockify.wipeout_workspace(workspace)
 
 
 def migrate(args):

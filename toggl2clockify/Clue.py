@@ -19,8 +19,10 @@ import dateutil.parser
 import pytz
 
 import toggl2clockify.toggl_api as toggl_api
-import toggl2clockify.clockify_api as clockify_api
-
+import toggl2clockify.clockify.api as clockify_api
+from toggl2clockify.clockify.hourly_rate import HourlyRate
+from toggl2clockify.clockify.membership import MemberShip
+from toggl2clockify.clockify.retval import RetVal
 
 def time_to_utc(time):
     """
@@ -36,12 +38,12 @@ class Clue:
     Clockify to toggl translation api.
     """
 
-    def __init__(self, clockifyKey, clockifyAdmin, togglKey, fallbackUserMail):
+    def __init__(self, clockify_key, clockify_admin, toggl_key, fallback_email):
         self.logger = logging.getLogger("toggl2clockify")
 
-        self.logger.info("testing toggl API key %s", togglKey)
+        self.logger.info("testing toggl API key %s", toggl_key)
         try:
-            self.toggl = toggl_api.TogglAPI(togglKey)
+            self.toggl = toggl_api.TogglAPI(toggl_key)
             self.logger.info("...ok, togglKey resolved to email %s", self.toggl.email)
         except Exception as error:
             self.logger.error(
@@ -50,7 +52,7 @@ class Clue:
             raise
 
         self.clockify = clockify_api.ClockifyAPI(
-            clockifyKey, clockifyAdmin, fallbackUserMail
+            clockify_key, clockify_admin, fallback_email
         )
 
         self._num_skip = 0
@@ -75,11 +77,11 @@ class Clue:
                 "adding tag %s (%d of %d tags)", tag["name"], idx + 1, num_tags
             )
 
-            retval = self.clockify.addTag(tag["name"], workspace)
-            if retval == clockify_api.RetVal.EXISTS:
+            retval = self.clockify.add_tag(tag["name"], workspace)
+            if retval == RetVal.EXISTS:
                 self.logger.info("tag %s already exists, skip...", tag["name"])
                 num_skips += 1
-            elif retval == clockify_api.RetVal.OK:
+            elif retval == RetVal.OK:
                 num_ok += 1
             else:
                 num_err += 1
@@ -105,8 +107,8 @@ class Clue:
                 "adding group %s (%d of %d groups)", group["name"], idx + 1, num_groups
             )
 
-            retval = self.clockify.addUserGroup(group["name"], workspace)
-            if retval == clockify_api.RetVal.EXISTS:
+            retval = self.clockify.add_usergroup(group["name"], workspace)
+            if retval == RetVal.EXISTS:
                 self.logger.info("User Group %s already exists, skip...", group["name"])
                 num_skips += 1
             else:
@@ -135,11 +137,11 @@ class Clue:
                 num_clients,
             )
 
-            retval = self.clockify.addClient(client["name"], workspace)
-            if retval == clockify_api.RetVal.EXISTS:
+            retval = self.clockify.add_client(client["name"], workspace)
+            if retval == RetVal.EXISTS:
                 self.logger.info("client %s already exists, skip...", client["name"])
                 num_skips += 1
-            elif retval == clockify_api.RetVal.OK:
+            elif retval == RetVal.OK:
                 num_ok += 1
             else:
                 num_err += 1
@@ -210,7 +212,7 @@ class Clue:
         tasks = self.toggl.get_tasks(workspace)
         if tasks is None:
             tasks = []
-        workspace_id = self.clockify.getWorkspaceID(workspace)
+        workspace_id = self.clockify.get_workspace_id(workspace)
 
         num_tasks = len(tasks)
         num_ok = 0
@@ -232,14 +234,14 @@ class Clue:
             time_est = self.get_estimate(task["estimated_seconds"])
 
             # Add the task to Clockify:
-            retval = self.clockify.addTask(
+            retval = self.clockify.add_task(
                 workspace_id, task["name"], proj_id, time_est
             )
 
-            if retval == clockify_api.RetVal.EXISTS:
+            if retval == RetVal.EXISTS:
                 self.logger.info("task %s already exists, skip...", task["name"])
                 num_skips += 1
-            elif retval == clockify_api.RetVal.OK:
+            elif retval == RetVal.OK:
                 num_ok += 1
                 self.logger.info(" ... done.")
             else:
@@ -253,11 +255,8 @@ class Clue:
         """
         toggl_projs = self.toggl.get_projects(workspace)
         self.logger.info("Number of total Projects in Toggl: %d", len(toggl_projs))
-
-        # getWorkspaceProjects() uses Clockify's Working API entry point,
-        # which gets all Projects without iterating all users, much quicker
-        clock_projs = self.clockify.getWorkspaceProjects(workspace)
-
+        
+        clock_projs = self.clockify.get_projects(workspace)
         clock_proj_names = {cPrj["name"] for cPrj in clock_projs}
 
         # Check if it's the first run (cPrjs = 0)
@@ -278,7 +277,7 @@ class Clue:
             " Number of total Projects in Clockify: %d, begin sync:", (len(clock_projs))
         )
 
-        workspace_id = self.clockify.getWorkspaceID(workspace)
+        workspace_id = self.clockify.get_workspace_id(workspace)
 
         # Load all Workspace Groups in simple array
         ws_groups = self.toggl.get_groups(workspace)
@@ -334,7 +333,7 @@ class Clue:
                 if members is None:
                     members = []
 
-                membership = clockify_api.MemberShip(self.clockify)
+                membership = MemberShip(self.clockify)
                 for member in members:
                     try:
                         email = self.toggl.get_user_email(member["uid"], workspace)
@@ -349,13 +348,13 @@ class Clue:
 
                     try:
                         manager = member["manager"]
-                        membership.addMembership(
+                        membership.add_membership(
                             email,
                             proj["name"],
                             workspace,
-                            membershipType="PROJECT",
-                            membershipStatus="ACTIVE",
-                            hourlyRate=None,
+                            m_type="PROJECT",
+                            m_status="ACTIVE",
+                            hourly_rate=None,
                             manager=manager,
                         )
                     except Exception as error:
@@ -369,7 +368,7 @@ class Clue:
 
                 if not err:
 
-                    retval = self.clockify.addProject(
+                    retval = self.clockify.add_project(
                         name,
                         client_name,
                         workspace,
@@ -377,28 +376,28 @@ class Clue:
                         billable,
                         color,
                         memberships=membership,
-                        manager=membership.getManagerUserMail(),
+                        manager=membership.get_manager_email(),
                     )
-                    if (retval == clockify_api.RetVal.OK) and (proj_groups == []):
+                    if (retval == RetVal.OK) and (proj_groups == []):
                         self.logger.info(" ...ok, done.")
                         num_ok += 1
-                    if (retval == clockify_api.RetVal.OK) and (proj_groups != []):
+                    if (retval == RetVal.OK) and (proj_groups != []):
                         self.logger.info(
                             " ...ok, now processing User Group assignments:"
                         )
-                        proj_id = self.clockify.getProjectID(
+                        proj_id = self.clockify.get_project_id(
                             name, client_name, workspace
                         )
-                        self.clockify.addGroupsToProject(
+                        self.clockify.add_groups_to_project(
                             workspace, workspace_id, proj_id, ws_group_ids, proj_groups
                         )
                         self.logger.info(" ...ok, done.")
                         num_ok += 1
-                    elif retval == clockify_api.RetVal.EXISTS:
+                    elif retval == RetVal.EXISTS:
                         self.logger.info("... project %s already exists, skip...", name)
                         num_skips += 1
-                    elif retval == clockify_api.RetVal.FORBIDDEN:
-                        manager = membership.getManagerUserMail()
+                    elif retval == RetVal.FORBIDDEN:
+                        manager = membership.get_manager_email()
                         self.logger.error(
                             " Could not add project %s. %s was project admin in toggl, \
                               but seems to not be admin in clockify. Check your workspace \
@@ -453,10 +452,10 @@ class Clue:
                     num_prjs,
                 )
 
-                c_prj_id = self.clockify.getProjectID(name, client_name, workspace)
-                c_prj = self.clockify.getProject(c_prj_id)
-                retval = self.clockify.archiveProject(c_prj)
-                if retval == clockify_api.RetVal.OK:
+                c_prj_id = self.clockify.get_project_id(name, client_name, workspace)
+                c_prj = self.clockify.get_project(c_prj_id, workspace)
+                retval = self.clockify.archive_project(c_prj)
+                if retval == RetVal.OK:
                     self.logger.info("...ok")
                     num_ok += 1
                 else:
@@ -483,17 +482,17 @@ class Clue:
             email = self.toggl.get_user_email(toggl_uid, self._workspace)
             # verify email actually exists in workspace. This will raise an
             # exception if it doesnt exist.
-            self.clockify.getUserIDByMail(email, self._workspace)
+            self.clockify.get_userid_by_email(email, self._workspace)
         except RuntimeError:
             try:
                 # attempt to match user via username
-                c_id = self.clockify.getUserIDByName(toggl_username, self._workspace)
+                c_id = self.clockify.get_userid_from_name(toggl_username, self._workspace)
                 self.logger.info(
                     "user '%s' found in clockify workspace as ID=%s",
                     toggl_username,
                     c_id,
                 )
-                email = self.clockify.getUserMailById(c_id, self._workspace)
+                email = self.clockify.get_email_by_id(c_id, self._workspace)
                 self.logger.info(
                     "user ID %s (name='%s') not in toggl workspace, \
                      but found a match in clockify workspace %s...",
@@ -506,8 +505,8 @@ class Clue:
                 if self._skip_inv_toggl_users:
                     return None
                 # assign task to the fallback email address.
-                if self.clockify.fallbackUserMail is not None:
-                    email = self.clockify.fallbackUserMail
+                if self.clockify.fallback_email is not None:
+                    email = self.clockify.fallback_email
                     self.logger.info(
                         "user '%s' not found in clockify workspace, using fallback user '%s'",
                         toggl_uid,
@@ -577,11 +576,11 @@ class Clue:
                 ]
             )
 
-        results = self.clockify.addEntriesThreaded(entry_data)
+        results = self.clockify.add_entries_threaded(entry_data)
         for retval, _ in results:
-            if retval == clockify_api.RetVal.ERR:
+            if retval == RetVal.ERR:
                 self._num_err += 1
-            elif retval == clockify_api.RetVal.EXISTS:
+            elif retval == RetVal.EXISTS:
                 self._num_skip += 1
             else:
                 self._num_ok += 1
