@@ -92,11 +92,9 @@ class ClockifyAPI:
         self._resync_tags = True
         self._resync_groups = True
         self._resync_tasks = True
-        self._admin_email = admin_email
+        self.admin_email = admin_email
         self.fallback_email = fallback_email
-        self.thread_pool = ThreadPool(
-            int(self.requests_per_second)
-        )  # only used for entry deletion
+        self.thread_pool = ThreadPool(int(self.requests_per_second))
 
         self._api_users = []
         self.test_tokens(api_tokens, admin_email)
@@ -111,7 +109,7 @@ class ClockifyAPI:
 
         self._get_workspaces()
 
-    def test_tokens(self, api_tokens, admin_email):
+    def test_tokens(self, api_tokens):
         """
         Test supplied api_tokens, and search for admin/fallback email
         """
@@ -125,7 +123,7 @@ class ClockifyAPI:
             retval = self._request(url)
             if retval.status_code != 200:
                 raise RuntimeError(
-                    "error loading user (API token %s), status code %s"
+                    "Error loading user (API token %s), status code %s"
                     % (token, str(retval.status_code))
                 )
 
@@ -136,35 +134,38 @@ class ClockifyAPI:
             user["email"] = retval["email"]
             user["id"] = retval["id"]
 
-            if retval["status"].upper() not in ["ACTIVE", "PENDING_EMAIL_VERIFICATION"]:
+            active_status = ["ACTIVE", "PENDING_EMAIL_VERIFICATION"]
+            if retval["status"].upper() not in active_status:
                 raise RuntimeError(
                     "user '%s' is not an active user in clockify. \
-                                    Please activate the user for the migration process"
+                    Please activate the user for the migration process"
                     % user["email"]
                 )
 
             self._api_users.append(user)
 
-            if retval["email"].lower() == admin_email.lower():
+            if retval["email"].lower() == self.admin_email.lower():
                 admin_found = True
 
-            if self.fallback_email is not None:
-                if retval["email"].lower() == self.fallback_email.lower():
-                    fallback_found = True
+            if (
+                self.fallback_email is not None
+                and retval["email"].lower() == self.fallback_email.lower()
+            ):
+                fallback_found = True
 
             self.logger.info("...ok, key resolved to email %s", retval["email"])
 
         if not admin_found:
             raise RuntimeError(
                 "admin mail address was given as %s \
-                                but not found in clockify API tokens"
-                % admin_email
+                but not found in clockify API tokens"
+                % self.admin_email
             )
 
-        if not fallback_found and self.fallback_email is not None:
+        if self.fallback_email is not None and not fallback_found:
             raise RuntimeError(
                 "falback user mail address was given as %s \
-                                but not found in clockify API tokens"
+                 but not found in clockify API tokens"
                 % self.fallback_email
             )
 
@@ -172,7 +173,7 @@ class ClockifyAPI:
         """
         Loads admin user as current api user.
         """
-        return self._load_user(self._admin_email)
+        return self._load_user(self.admin_email)
 
     def _load_user(self, email):
         """
@@ -598,7 +599,7 @@ class ClockifyAPI:
         cur_user = self._loaded_user_email
         if manager == "":
             if not public:
-                admin = self._admin_email
+                admin = self.admin_email
                 self.logger.warning(
                     "no manager found for project %s, making %s as manager", name, admin
                 )
