@@ -21,6 +21,7 @@ from converter.clockify.membership import MemberShips
 from converter.clockify.retval import RetVal
 from converter.clockify.entry import Entry
 from converter.clockify.project import Project
+from converter.phase_status import PhaseStatus
 
 
 class Clue:
@@ -45,10 +46,6 @@ class Clue:
             clockify_key, clockify_admin, fallback_email
         )
 
-        self._num_skip = 0
-        self._num_ok = 0
-        self._num_err = 0
-        self._num_entries = 0
         self._workspace = None
         self._skip_inv_toggl_users = False
 
@@ -174,16 +171,15 @@ class Clue:
         """
         Convert from toggl duration to clockify "estimate", (e.g. PT1H30M15S)
         """
-
-        time = time_in_seconds
-        if time > 0:
-            hours = time // (3600)
+        time_s = time_in_seconds
+        if time_s > 0:
+            hours = time_s // (3600)
             concat_h = hours > 0
-            time = time % (3600)
-            minutes = time // (60)
+            time_s = time_s % (3600)
+            minutes = time_s // (60)
             concat_m = (minutes > 0) or (concat_h)
-            time = time % (60)
-            seconds = time
+            time_s = time_s % (60)
+            seconds = time_s
             time_est = (
                 "PT"
                 + ["", "%dH" % hours][concat_h]
@@ -256,6 +252,8 @@ class Clue:
                 self.logger.info("Clockify already has items. Adding:")
                 printables = "\n".join([item["name"] for item in toggl_items])
                 self.logger.info(printables)
+            else:
+                self.logger.info("Toggl/Clockify projects already synced")
         return toggl_items
 
     def _get_new_toggl_projects(self, workspace):
@@ -382,82 +380,58 @@ class Clue:
 
         return num_prjs, num_ok, num_skips, num_err
 
-    def verify_email(self, toggl_uid, toggl_username, description):
+    def verify_email(self, toggl_uid, toggl_username):
         """
         Verifies and returns the email associated with a toggl User ID
         """
-        try:
-            # get email from toggl
-            email = self.toggl.get_user_email(toggl_uid, self._workspace)
-            # verify email actually exists in workspace. This will raise an
-            # exception if it doesnt exist.
-            self.clockify.get_userid_by_email(email, self._workspace)
-        except RuntimeError:
-            try:
-                # attempt to match user via username
-                c_id = self.clockify.get_userid_from_name(
-                    toggl_username, self._workspace
-                )
-                self.logger.info(
-                    "user '%s' found in clockify workspace as ID=%s",
-                    toggl_username,
-                    c_id,
-                )
-                email = self.clockify.get_email_by_id(c_id, self._workspace)
-                self.logger.info(
-                    "user ID %s (name='%s') not in toggl workspace, \
-                     but found a match in clockify workspace %s...",
-                    toggl_uid,
-                    toggl_username,
-                    email,
-                )
-            except RuntimeError:
-                # skip user entirely
-                if self._skip_inv_toggl_users:
-                    self.logger.info(
-                        "user ID %s (name='%s') not in toggl workspace, skipping entry %s...",
-                        toggl_uid,
-                        toggl_username,
-                        description,
-                    )
-                    return None
-                # assign task to the fallback email address.
-                if self.clockify.fallback_email is not None:
-                    email = self.clockify.fallback_email
-                    self.logger.info(
-                        "user '%s' not found in clockify workspace, using fallback user '%s'",
-                        toggl_uid,
-                        email,
-                    )
-                else:
-                    raise
 
-        return email
+        # direct match
+        t_email = self.toggl.get_user_email(toggl_uid, self._workspace)
+        if t_email is not None:
+            c_uid = self.clockify.get_userid_by_email(t_email, self._workspace)
+            if c_uid is not None:
+                return t_email
 
-    def on_new_reports(self, entries, total_count):
+        # attempt to match user via username
+        c_id = self.clockify.get_userid_from_name(toggl_username, self._workspace)
+        if c_id is not None:
+            c_email = self.clockify.get_email_by_id(c_id, self._workspace)
+            if c_email is not None:
+                return c_email
+
+        # if this flag is set, just return None immediately
+        if self._skip_inv_toggl_users:
+            return None
+
+        # assign task to the fallback email address.
+        if self.clockify.fallback_email is not None:
+            return self.clockify.fallback_email
+
+        raise RuntimeError("No email found for %s" % toggl_username)
+
+    def on_new_reports(self, entries, total_count, entry_status):
         """
         Queues entries into format suitable for clockify
         Then asks clockify to add the entries
         """
 
         entry_tasks = []
-
-        for idx, t_entry in enumerate(entries):
+        entry_status.num_entries = total_count
+        for t_entry in entries:
             c_entry = Entry(t_entry)
 
             self.logger.info(
                 "Queuing entry %s, project: %s (%d of %d)",
                 c_entry.description,
                 str(c_entry.project_name) + "|" + str(c_entry.client_name),
-                idx,
-                total_count,
+                entry_status.num_queued + 1,
+                entry_status.num_entries,
             )
 
-            email = self.verify_email(
-                t_entry["uid"], t_entry["user"], t_entry["description"]
-            )
+            email = self.verify_email(t_entry["uid"], t_entry["user"])
+
             if email is None:
-                self._num_skip += 1
+                entry_status.add_skip()
                 continue
 
             c_entry.email = email
@@ -465,17 +439,18 @@ class Clue:
             c_entry.timezone = "Z"
 
             entry_tasks.append(c_entry)
+            entry_status.num_queued += 1
 
+        # do the actual work
         results = self.clockify.add_entries_threaded(entry_tasks)
 
         for retval, _ in results:
             if retval == RetVal.ERR:
-                self._num_err += 1
+                entry_status.add_err()
             elif retval == RetVal.EXISTS:
-                self._num_skip += 1
+                entry_status.add_skip()
             else:
-                self._num_ok += 1
-        self._num_entries += len(entries)
+                entry_status.add_ok()
 
     def sync_entries(self, workspace, since, skip_inv_toggl_users=False, until=None):
         """
@@ -484,17 +459,17 @@ class Clue:
         if until is None:
             until = datetime.datetime.now()
 
-        self._num_skip = 0
-        self._num_ok = 0
-        self._num_err = 0
-        self._num_entries = 0
+        phase_status = PhaseStatus()
         self._workspace = workspace
         self._skip_inv_toggl_users = skip_inv_toggl_users
 
+        callback = lambda entries, total: self.on_new_reports(
+            entries, total, phase_status
+        )
         since_until = (since, until)
-        self.toggl.get_reports(workspace, since_until, self.on_new_reports)
+        self.toggl.get_reports(workspace, since_until, callback)
 
-        return self._num_entries, self._num_ok, self._num_skip, self._num_err
+        return phase_status.get_result()
 
     def get_toggl_workspaces(self):
         """

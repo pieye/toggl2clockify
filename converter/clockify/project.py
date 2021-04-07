@@ -87,15 +87,10 @@ class Project:
         """
         Gets email from toggl, wrapping it in an handy printout
         """
-        try:
-            email = toggl_api.get_user_email(toggl_uid, self.workspace)
-        except RuntimeError as error:
-            self.logger.warning(
-                "user id %d not found in toggl workspace, msg=%s",
-                toggl_uid,
-                str(error),
-            )
-            raise
+
+        email = toggl_api.get_user_email(toggl_uid, self.workspace)
+        if email is None:
+            raise RuntimeError("User id %d not found in toggl" % toggl_uid)
         return email
 
     def set_memberships(self, toggl_api):

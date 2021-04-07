@@ -163,6 +163,7 @@ class TogglAPI:
             req = self._request(url)
             if req.ok:
                 self.users = req.json()
+                dump_json("toggl_users.json", self.users)
             else:
                 raise RuntimeError(
                     "Error getting toggl workspace users, status code=%d, msg=%s"
@@ -358,16 +359,9 @@ class TogglAPI:
         Returns user's email, given its id
         """
         users = self.get_users(workspace_name)
-        email = None
 
         for user in users:
             if user["id"] == user_id:
-                email = user["email"]
-                break
+                return user["email"]
 
-        if email is None:
-            raise RuntimeError(
-                "userID %d (%s) not found in workspace %s"
-                % (user_id, str(email), workspace_name)
-            )
-        return email
+        return None

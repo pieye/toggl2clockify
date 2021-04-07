@@ -28,9 +28,9 @@ class ClockifyAPI:
     https://clockify.me/developers-api
     """
 
-    # API limits. Add a small buffer so we dont hit the limit
+    # API limits.
     requests_per_second = 10.0  # Rate limit is 10/s
-    time_per_request = 1.0 / (requests_per_second - 1)
+    time_per_request = 1.0 / (requests_per_second)
 
     # API URLS
     base_url = "https://api.clockify.me/api/v1"
@@ -49,6 +49,7 @@ class ClockifyAPI:
         self.usergroups = CachedList(usergroups_url, "usergroups", True)
         self.tags = CachedList(tags_url, "tags", True)
         self.clients = CachedList(clients_url, "clients", True)
+        self.workspaces = None
 
         self.admin_email = admin_email
         self.fallback_email = fallback_email
@@ -241,29 +242,29 @@ class ClockifyAPI:
         """
         Convert from workspace_name to id
         """
-        workspaces = self._get_workspaces()
-        workspace = first(workspaces, lambda x: x["name"] == workspace_name)
+        workspace = first(self.workspaces, lambda x: x["name"] == workspace_name)
         if workspace is not None:
             return workspace["id"]
 
         raise RuntimeError(
             "Workspace %s not found. Available workspaces: %s"
-            % (workspace_name, workspaces)
+            % (workspace_name, self.workspaces)
         )
 
     def _get_workspaces(self):
         """
         Return current workspaces
         """
-        url = self.base_url + "/workspaces"
-        retval = self.request(url)
-        if retval.status_code == 200:
-            self.workspaces = retval.json()
-        else:
-            raise RuntimeError(
-                "Querying workspaces for user %s failed, status code=%d, msg=%s"
-                % (self._api_users[0]["email"], retval.status_code, retval.text)
-            )
+        if self.workspaces is None:
+            url = self.base_url + "/workspaces"
+            retval = self.request(url)
+            if retval.status_code == 200:
+                self.workspaces = retval.json()
+            else:
+                raise RuntimeError(
+                    "Querying workspaces for user %s failed, status code=%d, msg=%s"
+                    % (self._api_users[0]["email"], retval.status_code, retval.text)
+                )
         return self.workspaces
 
     def add_client(self, name, workspace):
@@ -414,37 +415,38 @@ class ClockifyAPI:
     def get_userid_from_name(self, username, workspace):
         """
         Convert from username to user_id
+        Returns None on failure
         """
         users = self.get_users(workspace)
         user = first(users, lambda x: x["name"] == username)
         if user is not None:
             return user["id"]
 
-        raise RuntimeError("User %s not found in workspace %s" % (username, workspace))
+        return None
 
     def get_email_by_id(self, user_id, workspace):
         """
         Convert from user_id to email
+        Returns None on failure.
         """
         users = self.get_users(workspace)
         user = first(users, lambda x: x["id"] == user_id)
         if user is not None:
             return user["email"]
 
-        raise RuntimeError(
-            "User ID %s not found in workspace %s" % (user_id, workspace)
-        )
+        return None
 
     def get_userid_by_email(self, email, workspace):
         """
         Convert from email to userid
+        Returns None on failure.
         """
         users = self.get_users(workspace)
         user = first(users, lambda x: x["email"] == email)
         if user is not None:
             return user["id"]
 
-        raise RuntimeError("User %s not found in workspace %s" % (email, workspace))
+        return None
 
     def _load_project_admin(self, project):
         """
