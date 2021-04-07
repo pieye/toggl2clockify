@@ -185,3 +185,20 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
 ## Clearing the workspace
 You can use the `--wipeAll` flag to clear the entire workspace. This is useful for development/testing, since the duplication detection isn't perfect.
 This restores the workspace to a blank slate without having to create a new workspace. The program will wipe everything first, then immediately exit.
+
+
+## Development
+Use black for auto-formatting
+
+```bash
+pip install black
+black .
+```
+
+Use pylint_runner for linting code
+
+```bash
+pip install pylint
+pip install pylint-runner
+pylint_runner
+```

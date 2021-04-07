@@ -7,6 +7,7 @@ class PhaseStatus:
     """
     Small class to keep track of current phase's status
     """
+
     def __init__(self):
         self.num_entries = 0
         self.num_processed = 0

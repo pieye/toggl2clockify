@@ -54,55 +54,56 @@ class Clue:
         Synchronize tags from toggl to clockify
         """
         tags = self.toggl.get_tags(workspace)
-        num_tags = len(tags)
-        num_ok = 0
-        num_skips = 0
-        num_err = 0
-        idx = 0
+        status = PhaseStatus()
+        status.num_entries = len(tags)
+
         for tag in tags:
             self.logger.info(
-                "adding tag %s (%d of %d tags)", tag["name"], idx + 1, num_tags
+                "adding tag %s (%d of %d tags)",
+                tag["name"],
+                status.num_processed + 1,
+                status.num_entries,
             )
 
             retval = self.clockify.add_tag(tag["name"], workspace)
             if retval == RetVal.EXISTS:
                 self.logger.info("tag %s already exists, skip...", tag["name"])
-                num_skips += 1
+                status.add_skip()
             elif retval == RetVal.OK:
-                num_ok += 1
+                status.add_ok()
             else:
-                num_err += 1
-            idx += 1
+                status.add_err()
 
-        return num_tags, num_ok, num_skips, num_err
+        return status.get_result()
 
     def sync_groups(self, workspace):
         """
         Synchronize groups from toggl to clockify
         """
         groups = self.toggl.get_groups(workspace)
-        if groups is None:
-            groups = []
+        groups = groups or []  # ensure empty list
 
-        num_groups = len(groups)
-        num_ok = 0
-        num_skips = 0
-        num_err = 0
-        idx = 0
+        status = PhaseStatus()
+        status.num_entries = len(groups)
+
         for group in groups:
             self.logger.info(
-                "adding group %s (%d of %d groups)", group["name"], idx + 1, num_groups
+                "adding group %s (%d of %d groups)",
+                group["name"],
+                status.num_processed + 1,
+                status.num_entries,
             )
 
             retval = self.clockify.add_usergroup(group["name"], workspace)
             if retval == RetVal.EXISTS:
                 self.logger.info("User Group %s already exists, skip...", group["name"])
-                num_skips += 1
+                status.add_skip()
+            elif retval == RetVal.OK:
+                status.add_ok()
             else:
-                num_err += 1
-            idx += 1
+                status.add_err()
 
-        return num_groups, num_ok, num_skips, num_err
+        return status.get_result()
 
     def sync_clients(self, workspace):
         """
@@ -113,30 +114,27 @@ class Clue:
         self.logger.info("Number of total clients in Toggl: %d", len(t_clients))
         t_clients = self.cull_same_name(t_clients, c_clients)
 
-        num_clients = len(t_clients)
-        num_ok = 0
-        num_skips = 0
-        num_err = 0
+        status = PhaseStatus()
+        status.num_entries = len(t_clients)
 
-        for idx, client in enumerate(t_clients):
+        for client in t_clients:
             self.logger.info(
                 "Adding client %s (%d of %d)",
                 client["name"],
-                idx + 1,
-                num_clients,
+                status.num_processed + 1,
+                status.num_entries,
             )
 
             retval = self.clockify.add_client(client["name"], workspace)
             if retval == RetVal.EXISTS:
                 self.logger.info("client %s already exists, skip...", client["name"])
-                num_skips += 1
+                status.add_skip()
             elif retval == RetVal.OK:
-                num_ok += 1
+                status.add_ok()
             else:
-                num_err += 1
-            idx += 1
+                status.add_err()
 
-        return num_clients, num_ok, num_skips, num_err
+        return status.get_result()
 
     def match_project(self, toggl_project_id, workspace):
         """
@@ -198,27 +196,26 @@ class Clue:
         Does *not* synchronize user assignments
         """
         tasks = self.toggl.get_tasks(workspace)
-        if tasks is None:
-            tasks = []
+        tasks = tasks or []  # ensure empty list
         workspace_id = self.clockify.get_workspace_id(workspace)
 
-        num_tasks = len(tasks)
-        num_ok = 0
-        num_skips = 0
-        num_err = 0
+        status = PhaseStatus()
+        status.num_entries = len(tasks)
 
-        self.logger.info("Number of Toggl projects found: %s", len(self.toggl.projects))
+        self.logger.info("Number of Toggl projects: %s", len(self.toggl.projects))
         self.logger.info(
-            "Number of Clockify projects found: %s", len(self.clockify.projects.data)
+            "Number of Clockify projects: %s", len(self.clockify.projects.data)
         )
 
-        for idx, task in enumerate(tasks):
+        for task in tasks:
             self.logger.info(
-                "Adding tasks %s (%d of %d tasks)...", task["name"], idx + 1, num_tasks
+                "Adding task %s (%d of %d tasks)...",
+                task["name"],
+                status.num_processed + 1,
+                status.num_entries,
             )
 
             proj_id = self.match_project(task["pid"], workspace)
-
             time_est = self.get_estimate(task["estimated_seconds"])
 
             # Add the task to Clockify:
@@ -228,18 +225,18 @@ class Clue:
 
             if retval == RetVal.EXISTS:
                 self.logger.info("task %s already exists, skip...", task["name"])
-                num_skips += 1
+                status.add_skip()
             elif retval == RetVal.OK:
-                num_ok += 1
-                self.logger.info(" ... done.")
+                status.add_ok()
             else:
-                num_err += 1
+                status.add_err()
 
-        return num_tasks, num_ok, num_skips, num_err
+        return status.get_result()
 
     def cull_same_name(self, toggl_items, clock_items):
         """
-        Removes projects in toggl_projs that are already on clock_projs
+        Removes projects in toggl_projs/clients
+        that are already on clock_projs/clients
         """
         clock_names = {item["name"] for item in clock_items}
 
@@ -276,12 +273,10 @@ class Clue:
         # map from toggl group_id to group_name
         tgroupid_to_groupname = {group["id"]: group["name"] for group in t_groups}
 
-        num_prjs = len(toggl_projs)
-        num_ok = 0
-        num_skips = 0
-        num_err = 0
+        status = PhaseStatus()
+        status.num_entries = len(toggl_projs)
 
-        for idx, t_proj in enumerate(toggl_projs):
+        for t_proj in toggl_projs:
             c_proj = Project(t_proj)
 
             # Convert from toggl_ids to strings
@@ -294,27 +289,27 @@ class Clue:
                 "Adding project %s|%s (%d of %d projects)",
                 str(c_proj.name),
                 str(c_proj.client),
-                idx + 1,
-                num_prjs,
+                status.num_processed + 1,
+                status.num_entries,
             )
 
             if err:
-                num_err += 1
+                status.add_err()
                 continue
 
             retval = self.clockify.add_project(c_proj)
 
             if retval == RetVal.OK and not c_proj.groups:
                 self.logger.info(" ...ok, done.")
-                num_ok += 1
+                status.add_ok()
             if retval == RetVal.OK and c_proj.groups:
                 self.logger.info(" ...ok, processing User/Group assignments:")
                 self.clockify.add_groups_to_project(c_proj)
                 self.logger.info(" ...ok, done.")
-                num_ok += 1
+                status.add_ok()
             elif retval == RetVal.EXISTS:
                 self.logger.info("... project %s exists, skip...", c_proj.name)
-                num_skips += 1
+                status.add_skip()
             elif retval == RetVal.FORBIDDEN:
                 self.logger.error(
                     " Could not add project %s. %s was project admin in toggl, \
@@ -326,9 +321,9 @@ class Clue:
                 )
                 sys.exit(1)
             else:
-                num_err += 1
+                status.add_err()
 
-        return num_prjs, num_ok, num_skips, num_err
+        return status.get_result()
 
     def sync_projects_archive(self, workspace):
         """
@@ -336,11 +331,9 @@ class Clue:
         """
         projects = self.toggl.get_projects(workspace)
 
-        idx = 0
-        num_prjs = len(projects)
-        num_ok = 0
-        num_skips = 0
-        num_err = 0
+        status = PhaseStatus()
+        status.num_entries = len(projects)
+
         for project in projects:
             name = project["name"]
             client_name = None
@@ -349,14 +342,13 @@ class Clue:
                     project["cid"], workspace, null_ok=True
                 )
 
+            full_proj_name = name + "|" + str(client_name)
             if not project["active"]:
-                # get clientName
-
                 self.logger.info(
                     "project %s is not active, trying to archive (%d of %d)",
-                    name + "|" + str(client_name),
-                    idx,
-                    num_prjs,
+                    full_proj_name,
+                    status.num_processed,
+                    status.num_entries,
                 )
 
                 c_prj_id = self.clockify.get_project_id(name, client_name, workspace)
@@ -364,21 +356,19 @@ class Clue:
                 retval = self.clockify.archive_project(c_prj)
                 if retval == RetVal.OK:
                     self.logger.info("...ok")
-                    num_ok += 1
+                    status.add_ok()
                 else:
-                    num_err += 1
+                    status.add_err()
             else:
                 self.logger.info(
                     "project %s is still active, skipping (%d of %d)",
-                    name + "|" + str(client_name),
-                    idx,
-                    num_prjs,
+                    full_proj_name,
+                    status.num_processed,
+                    status.num_entries,
                 )
-                num_skips += 1
+                status.add_skip()
 
-            idx += 1
-
-        return num_prjs, num_ok, num_skips, num_err
+        return status.get_result()
 
     def verify_email(self, toggl_uid, toggl_username):
         """
