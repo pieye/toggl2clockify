@@ -779,7 +779,7 @@ class ClockifyAPI:
         Returns if source exists inside entries
         """
         for entry in entries:
-            different = source.diff_entry(entry, self, self.user_id)
+            different = source.diff_entry(entry, self.user_id)
             same = not different
             if same:
                 return True

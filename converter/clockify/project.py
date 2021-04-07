@@ -19,6 +19,8 @@ class Project:
         self.billable = toggl_dict["billable"]
         self.color = toggl_dict["hex_color"]
 
+        self.toggl_dict = toggl_dict
+
         # these are defined in ingest()
         self.workspace = None
         self.client = None
@@ -27,17 +29,24 @@ class Project:
         self.manager = ""
         self.groups = []  # list of group_names associated with project
 
-    def ingest(self, workspace, toggl_api, t_proj, group_map, c_membership):
+    def _get_toggl_clientid(self):
+        """
+        Return toggl clientid for project
+        """
+        if "cid" in self.toggl_dict:
+            return self.toggl_dict["cid"]
+        return None
+
+    def ingest(self, workspace, toggl_api, group_map, c_membership):
         """
         Converts toggl *proj* dictionary with unique_ids into text names
         It then stores these into this class.
         Returns true if an error occurred
         """
         self.workspace = workspace
-        if "cid" in t_proj:
-            self.client = toggl_api.get_client_name(
-                t_proj["cid"], workspace, null_ok=True
-            )
+        client_id = self._get_toggl_clientid()
+
+        self.client = toggl_api.get_client_name(client_id, workspace, null_ok=True)
 
         # Prepare Group assignment to Projects
         proj_groups = toggl_api.get_project_groups(self.name, workspace)

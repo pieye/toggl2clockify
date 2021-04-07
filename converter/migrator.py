@@ -289,7 +289,7 @@ class Clue:
             # Convert from toggl_ids to strings
             c_memberships = MemberShips(self.clockify)
             err = c_proj.ingest(
-                workspace, self.toggl, t_proj, tgroupid_to_groupname, c_memberships
+                workspace, self.toggl, tgroupid_to_groupname, c_memberships
             )
 
             self.logger.info(

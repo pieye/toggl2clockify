@@ -236,25 +236,25 @@ class TogglAPI:
 
             self.logger.info(
                 "fetching entries from %s to %s",
-                next_start.isoformat(),
-                cur_stop.isoformat(),
+                next_start.isoformat() + time_zone,
+                cur_stop.isoformat() + time_zone,
             )
+
             self._get_reports(
-                workspace_name, (next_start, cur_stop), callback, time_zone
+                workspace_name,
+                next_start.isoformat() + time_zone,
+                cur_stop.isoformat() + time_zone,
+                callback,
             )
             if end:
                 break
 
             next_start = cur_stop
 
-    def _get_reports(self, workspace_name, since_until, callback, time_zone="CET"):
+    def _get_reports(self, workspace_name, since, until, callback):
         """
         Stream entries for a user from the API
         """
-        since, until = since_until
-        since = since.isoformat() + time_zone
-        until = until.isoformat() + time_zone
-
         ws_id = self.get_workspace_id(workspace_name)
         page = 1
 
@@ -276,7 +276,6 @@ class TogglAPI:
             page += 1
 
             jsonresp = response.json()
-
             data = jsonresp["data"]
             entry_cnt += len(data)
             total_cnt = jsonresp["total_count"]

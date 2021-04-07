@@ -17,8 +17,6 @@ class MemberShips:
         self,
         email,
         workspace,
-        m_type="PROJECT",
-        m_status="ACTIVE",
         hourly_rate=None,
         is_manager=False,
     ):
@@ -31,8 +29,8 @@ class MemberShips:
         user_id = self.connector.get_userid_by_email(email, workspace)
 
         membership = {}
-        membership["membershipStatus"] = m_status
-        membership["membershipType"] = m_type
+        membership["membershipStatus"] = "PROJECT"
+        membership["membershipType"] = "ACTIVE"
         membership["userId"] = user_id  # clockify_user_id
         membership["manager"] = is_manager  # boolean
         if hourly_rate is not None:
