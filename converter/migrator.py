@@ -302,7 +302,7 @@ class Clue:
             if retval == RetVal.OK and not c_proj.groups:
                 self.logger.info(" ...ok, done.")
                 status.add_ok()
-            if retval == RetVal.OK and c_proj.groups:
+            elif retval == RetVal.OK and c_proj.groups:
                 self.logger.info(" ...ok, processing User/Group assignments:")
                 self.clockify.add_groups_to_project(c_proj)
                 self.logger.info(" ...ok, done.")
