@@ -45,13 +45,11 @@ class CachedList:
         """
         Call api and store results.
         """
-        cur_user = api._loaded_user_email  # store current user
-        api._load_admin()
         url = self.url % args
         if self.multi:
-            self.data = api.multi_get_request(url)
+            self.data = api.multi_get_request(url, sudo=True)
         else:
-            retval = api.request(url, typ="GET")
+            retval = api.request(url, typ="GET", sudo=True)
             self.data = retval.json()
 
         file_name = self.file_name()
@@ -60,5 +58,3 @@ class CachedList:
         )
 
         dump_json(f"{file_name}.json", self.data)
-
-        api._load_user(cur_user)  # restore user

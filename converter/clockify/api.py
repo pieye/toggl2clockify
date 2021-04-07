@@ -164,10 +164,16 @@ class ClockifyAPI:
         self.logger.warning("user %s not found", email)
         return RetVal.ERR
 
-    def multi_get_request(self, url):
+    def multi_get_request(self, url, sudo=False):
         """
         Paginated get request
         """
+        if sudo:  # swap to admin, run command, swap back
+            cur_user = self._loaded_user_email
+            self._load_admin()
+            self.multi_get_request(url)
+            self._load_user(cur_user)
+
         headers = {"X-Api-Key": self.api_token}
         id_key = "id"
         page = 1
@@ -206,11 +212,17 @@ class ClockifyAPI:
 
         return retval_data
 
-    def request(self, url, body=None, typ="GET"):
+    def request(self, url, body=None, typ="GET", sudo=False):
         """
         Executes a requests.get/put/post/delete
         Automatically halts to prevent overloading API limit
         """
+        if sudo:  # swap to admin, run command, swap back
+            cur_user = self._loaded_user_email
+            self._load_admin()
+            self.request(url, body, typ)
+            self._load_user(cur_user)
+
         start_ts = time.time()
         headers = {"X-Api-Key": self.api_token}
         if typ == "GET":
@@ -271,13 +283,10 @@ class ClockifyAPI:
         """
         Add client to workspace
         """
-        cur_user = self._loaded_user_email
-        self._load_admin()
-
         ws_id = self.get_workspace_id(workspace)
         url = self.base_url + "/workspaces/%s/clients" % ws_id
         params = {"name": name}
-        retval = self.request(url, body=params, typ="POST")
+        retval = self.request(url, body=params, typ="POST", sudo=True)
 
         if not retval.ok:
             if retval.status_code == 400:
@@ -293,8 +302,6 @@ class ClockifyAPI:
         else:
             retval = RetVal.OK
             self.clients.need_resync = True
-
-        self._load_user(cur_user)
 
         return retval
 
@@ -613,14 +620,11 @@ class ClockifyAPI:
         """
         Add tag to workspace
         """
-        # change to admin and then back again at the end.
-        cur_user = self._loaded_user_email
-        self._load_admin()
 
         ws_id = self.get_workspace_id(workspace)
         url = self.base_url + "/workspaces/%s/tags" % ws_id
         params = {"name": tag_name}
-        retval = self.request(url, body=params, typ="POST")
+        retval = self.request(url, body=params, typ="POST", sudo=True)
         if retval.status_code == 201:
             self.tags.need_resync = True
             retval = RetVal.OK
@@ -635,7 +639,6 @@ class ClockifyAPI:
             )
             retval = RetVal.ERR
 
-        self._load_user(cur_user)
         return retval
 
     def get_tag_name(self, tag_id, workspace):
@@ -664,15 +667,12 @@ class ClockifyAPI:
         """
         Add task to workspace
         """
-        cur_user = self._loaded_user_email
-        self._load_admin()
-
         url = self.base_url + "/workspaces/%s/projects/%s/tasks/" % (
             workspace_id,
             project_id,
         )
         params = {"name": name, "projectId": project_id, "estimate": estimate}
-        retval = self.request(url, body=params, typ="POST")
+        retval = self.request(url, body=params, typ="POST", sudo=True)
         if retval.status_code == 201:
             retval = RetVal.OK
         elif retval.status_code == 400:
@@ -686,7 +686,6 @@ class ClockifyAPI:
             )
             retval = RetVal.ERR
 
-        self._load_user(cur_user)
         return retval
 
     def add_entries_threaded(self, entries):
