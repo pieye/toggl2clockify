@@ -15,12 +15,12 @@ import datetime
 import logging
 import sys
 
-import toggl2clockify.toggl_api as toggl_api
-import toggl2clockify.clockify.api as clockify_api
-from toggl2clockify.clockify.membership import MemberShips
-from toggl2clockify.clockify.retval import RetVal
-from toggl2clockify.clockify.entry import Entry
-from toggl2clockify.clockify.project import Project
+import converter.toggl_api as toggl_api
+import converter.clockify.api as clockify_api
+from converter.clockify.membership import MemberShips
+from converter.clockify.retval import RetVal
+from converter.clockify.entry import Entry
+from converter.clockify.project import Project
 
 
 class Clue:

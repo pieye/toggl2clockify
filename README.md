@@ -125,7 +125,7 @@ bin/toggl2clockify.exe
 directly or through python by installing the requirements, and then running it.
 ```bash
 pip install -r requirements.txt
-python toggl2clockify.py
+python main.py
 ```
 
 make sure you have a file called **config.json in the folder from where you invoke the program**.
@@ -143,7 +143,7 @@ to get a list of all supported commands.
 
 Your very last invokation of the import tool should be
 ```bash
-bin/toggl2clockify.exe --skipClients --skipProjects --skipTasks --skipEntries --skipTags --doArchive
+bin/main.exe --skipClients --skipProjects --skipTasks --skipEntries --skipTags --doArchive
 ```
 
 When you try to add time entries for projects, which are **already archived in clockify**, the tool gets messed up:

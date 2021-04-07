@@ -75,6 +75,9 @@ class Project:
         return params
 
     def get_toggl_email(self, toggl_api, toggl_uid):
+        """
+        Gets email from toggl, wrapping it in an handy printout
+        """
         try:
             email = toggl_api.get_user_email(toggl_uid, self.workspace)
         except RuntimeError as error:
@@ -106,7 +109,6 @@ class Project:
             try:
                 self.memberships.add_membership(
                     email,
-                    self.name,
                     self.workspace,
                     is_manager=member["manager"],
                 )

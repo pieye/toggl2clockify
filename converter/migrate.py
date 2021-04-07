@@ -15,8 +15,8 @@ __email__ = "markus.proeller@pieye.org"
 import logging
 import sys
 
-from toggl2clockify.Clue import Clue
-from toggl2clockify.config import Config
+from converter.migrator import Clue
+from converter.config import Config
 
 logger = logging.getLogger("toggl2clockify")
 

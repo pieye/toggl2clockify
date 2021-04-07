@@ -16,13 +16,16 @@ class MemberShips:
     def add_membership(
         self,
         email,
-        project_name,
         workspace,
         m_type="PROJECT",
         m_status="ACTIVE",
         hourly_rate=None,
         is_manager=False,
     ):
+        """
+        Creates an api friendly dictionary of a membership
+        Adds it to our list of memberships for export later
+        """
         self.workspace = workspace
 
         user_id = self.connector.get_userid_by_email(email, workspace)
@@ -38,6 +41,9 @@ class MemberShips:
         return True
 
     def get_manager_email(self):
+        """
+        Searches for first manager and gets their email
+        """
         mail = ""
         for m_ship in self.memberships:
             if m_ship["manager"]:
@@ -46,4 +52,7 @@ class MemberShips:
         return mail
 
     def get_data(self):
+        """
+        Returns memberships
+        """
         return self.memberships

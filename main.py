@@ -4,8 +4,8 @@ Sets up logging, parses arguments and then migrates.
 """
 import logging
 
-from toggl2clockify.migrate import migrate
-from toggl2clockify.args import parse
+from converter.migrate import migrate
+from converter.args import parse
 
 
 if __name__ == "__main__":

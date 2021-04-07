@@ -62,6 +62,7 @@ class Entry:
         self.task_name = t_entry["task"]
         self.email = None  # set externally
         self.workspace = None  # set externally
+        self.timezone = None
 
         # Set later using API
         self.proj_id = None
@@ -104,6 +105,9 @@ class Entry:
                 self.tag_ids.append(tag_id)
 
     def to_api_dict(self):
+        """
+        Converts internal data into Params api dictionary
+        """
         params = {
             "start": self.start,
             "billable": self.billable,
@@ -126,8 +130,10 @@ class Entry:
 
         return params
 
-    def diff_entry(self, other, api, user_id):
-
+    def diff_entry(self, other, user_id):
+        """
+        Returns true if this entry is different to the other entry
+        """
         this = self.to_api_dict()
 
         if this["start"] != other["timeInterval"]["start"]:
@@ -160,6 +166,10 @@ class Entry:
 
 
 class EntryQuery:
+    """
+    A query to ask the API for entries
+    """
+
     def __init__(self, *args):
         """
         1-arg: pass in an Entry
@@ -199,7 +209,6 @@ class EntryQuery:
         """
         Lazily create api dictionary
         """
-
         if self.api_dict is None:
             params = {"description": self.description}
 

@@ -51,7 +51,7 @@ class CachedList:
         if self.multi:
             self.data = api.multi_get_request(url)
         else:
-            retval = api._request(url, typ="GET")
+            retval = api.request(url, typ="GET")
             self.data = retval.json()
 
         file_name = self.file_name()
