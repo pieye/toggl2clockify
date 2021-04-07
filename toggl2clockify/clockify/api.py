@@ -521,7 +521,7 @@ class ClockifyAPI:
             )
             self._load_admin()
         else:
-            self._load_user(project, manager)
+            self._load_user(project, project.manager)
 
     def add_project(self, project):
         """
@@ -548,7 +548,7 @@ class ClockifyAPI:
         else:
             self.logger.warning(
                 "Error adding project  %s, status code=%d, msg=%s",
-                name,
+                project.name,
                 retval.status_code,
                 retval.reason,
             )

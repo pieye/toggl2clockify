@@ -103,7 +103,7 @@ def import_workspace(workspace, clue, start_time, end_time, args):
         str(end_time),
     )
     # fmt: off
-    process_phase(1, "Import clients", args.skipClients,lambda: clue.sync_clients(workspace))
+    process_phase(1, "Import clients", args.skipClients, lambda: clue.sync_clients(workspace))
     process_phase(2, "Import tags", args.skipTags, lambda: clue.sync_tags(workspace))
     process_phase(3, "Import groups", args.skipGroups, lambda: clue.sync_groups(workspace))
     process_phase(4, "Import projects", args.skipProjects, lambda: clue.sync_projects(workspace))

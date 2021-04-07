@@ -4,6 +4,7 @@ Clockify project
 
 import logging
 
+
 class Project:
     """
     Clockify project, constructed from toggl dictionary
@@ -25,7 +26,7 @@ class Project:
         self.hourly_rate = None
         self.manager = ""
         self.groups = []  # list of group_names associated with project
-        
+
     def ingest(self, workspace, toggl_api, t_proj, group_map, c_membership):
         """
         Converts toggl *proj* dictionary with unique_ids into text names
@@ -69,7 +70,7 @@ class Project:
         if self.memberships is not None:
             params["memberships"] = self.memberships.get_data()
         if self.hourly_rate is not None:
-            params["hourlyRate"] = hourly_rate.rate
+            params["hourlyRate"] = self.hourly_rate.rate
 
         return params
 
@@ -93,7 +94,7 @@ class Project:
 
         t_members = toggl_api.get_project_users(self.name, self.workspace)
         t_members = t_members or []  # ensure empty list
-        
+
         for member in t_members:
             # grab email of user
             try:

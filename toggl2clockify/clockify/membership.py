@@ -5,7 +5,7 @@ Membership class. Links workspace, user and manager
 
 class MemberShips:
     """
-    Membership class. Links workspace, user and manager
+    Memberships class. Links workspace, user and manager
     """
 
     def __init__(self, api):
@@ -25,13 +25,13 @@ class MemberShips:
     ):
         self.workspace = workspace
 
-        userID = self.connector.get_userid_by_email(email, workspace)
+        user_id = self.connector.get_userid_by_email(email, workspace)
 
         membership = {}
         membership["membershipStatus"] = m_status
         membership["membershipType"] = m_type
-        membership["userId"] = userID  # clockify_user_id
-        membership["manager"] = manager  # boolean
+        membership["userId"] = user_id  # clockify_user_id
+        membership["manager"] = is_manager  # boolean
         if hourly_rate is not None:
             membership["hourlyRate"] = hourly_rate.rate
         self.memberships.append(membership)
@@ -41,8 +41,7 @@ class MemberShips:
         mail = ""
         for m_ship in self.memberships:
             if m_ship["manager"]:
-                mail = self.connector.get_email_by_id(m_ship["userId"],
-                                                      self.workspace)
+                mail = self.connector.get_email_by_id(m_ship["userId"], self.workspace)
                 break
         return mail
 
