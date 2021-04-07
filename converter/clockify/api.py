@@ -10,37 +10,16 @@ __copyright__ = "Copyright 2019, pieye GmbH (www.pieye.org)"
 __maintainer__ = "Markus Proeller"
 __email__ = "markus.proeller@pieye.org"
 
-
 import time
 from multiprocessing.pool import ThreadPool
 import logging
 import json
-
 import requests
 
 from converter.clockify.retval import RetVal
 from converter.clockify.entry import EntryQuery
 from converter.clockify.cached_list import CachedList
-
-
-def match_client(project_data, client_name):
-    """
-    Given a project's json data, sees if the client name matches
-    """
-    if client_name is None:
-        client_name = ""
-    if "clientName" in project_data and project_data["clientName"] == client_name:
-        return True
-    return False
-
-
-def safe_get(dictionary, key):
-    """
-    Safely get value from dictionary
-    """
-    if key in dictionary:
-        return dictionary[key]
-    return None
+from converter.clockify.helpers import match_client, safe_get, first
 
 
 class ClockifyAPI:
@@ -54,15 +33,14 @@ class ClockifyAPI:
     time_per_request = 1.0 / (requests_per_second - 1)
 
     # API URLS
-    base_url = "https://clockify.me/api/v1"
-    base_url_api = "https://api.clockify.me/api/v1"
+    base_url = "https://api.clockify.me/api/v1"
 
     def __init__(self, api_tokens, admin_email="", fallback_email=None):
         self.logger = logging.getLogger("toggl2clockify")
 
-        projects_url = self.base_url_api + "/workspaces/%s/projects"
+        projects_url = self.base_url + "/workspaces/%s/projects"
         users_url = self.base_url + "/workspace/%s/users"
-        usergroups_url = self.base_url_api + "/workspaces/%/userGroups"
+        usergroups_url = self.base_url + "/workspaces/%/userGroups"
         tags_url = self.base_url + "/workspaces/%s/tags"
         clients_url = self.base_url + "/workspaces/%s/clients"
 
@@ -179,13 +157,11 @@ class ClockifyAPI:
                 self._loaded_user_email = user["email"]
                 break
 
-        if not success:
-            retval = RetVal.ERR
-            self.logger.warning("user %s not found", email)
-        else:
-            retval = RetVal.OK
+        if success:
+            return RetVal.OK
 
-        return retval
+        self.logger.warning("user %s not found", email)
+        return RetVal.ERR
 
     def multi_get_request(self, url):
         """
@@ -265,17 +241,15 @@ class ClockifyAPI:
         """
         Convert from workspace_name to id
         """
-        ws_id = None
         workspaces = self._get_workspaces()
-        for workspace in workspaces:
-            if workspace["name"] == workspace_name:
-                ws_id = workspace["id"]
-        if ws_id is None:
-            raise RuntimeError(
-                "Workspace %s not found. Available workspaces: %s"
-                % (workspace_name, workspaces)
-            )
-        return ws_id
+        workspace = first(workspaces, lambda x: x["name"] == workspace_name)
+        if workspace is not None:
+            return workspace["id"]
+
+        raise RuntimeError(
+            "Workspace %s not found. Available workspaces: %s"
+            % (workspace_name, workspaces)
+        )
 
     def _get_workspaces(self):
         """
@@ -350,44 +324,35 @@ class ClockifyAPI:
         """
         get client_name from client_id
         """
-        result = None
-
         clients = self.get_clients(workspace)
 
-        for client in clients:
-            if client["id"] == client_id:
-                result = client["name"]
+        client = first(clients, lambda x: x["id"] == client_id)
+        if client is not None:
+            return client["name"]
 
-        if result is None:
-            if null_ok:
-                result = ""
-            else:
-                raise RuntimeError(
-                    "Client %s not found in workspace %s" % (client_id, workspace)
-                )
+        if null_ok:
+            return ""
 
-        return result
+        raise RuntimeError(
+            "Client %s not found in workspace %s" % (client_id, workspace)
+        )
 
     def get_client_id(self, client_name, workspace, null_ok=False):
         """
         Get client_id from client_name
         """
-        result = None
-
         clients = self.get_clients(workspace)
 
-        for client in clients:
-            if client["name"] == client_name:
-                result = client["id"]
+        client = first(clients, lambda x: x["name"] == client_name)
+        if client is not None:
+            return client["id"]
 
-        if result is None:
-            if null_ok:
-                return None
+        if null_ok:
+            return None
 
-            raise RuntimeError(
-                "Client %s not found in workspace %s" % (client_name, workspace)
-            )
-        return result
+        raise RuntimeError(
+            "Client %s not found in workspace %s" % (client_name, workspace)
+        )
 
     def get_projects(self, workspace):
         """
@@ -400,21 +365,16 @@ class ClockifyAPI:
         """
         Returns project_id given project's name and client's name
         """
-        result = None
-
         projects = self.get_projects(workspace)
+        condition = lambda x: x["name"] == proj_name and match_client(x, client)
+        project = first(projects, condition)
+        if project is not None:
+            return project["id"]
 
-        for project in projects:
-            if project["name"] == proj_name and match_client(project, client):
-                result = project["id"]
-                break
-
-        if result is None:
-            raise RuntimeError(
-                "Project %s with client %s not found in workspace %s"
-                % (proj_name, str(client), workspace)
-            )
-        return result
+        raise RuntimeError(
+            "Project %s with client %s not found in workspace %s"
+            % (proj_name, str(client), workspace)
+        )
 
     def get_project(self, project_id, workspace):
         """
@@ -422,9 +382,10 @@ class ClockifyAPI:
         """
         projects = self.get_projects(workspace)
 
-        for project in projects:
-            if project["id"] == project_id:
-                return project
+        project = first(projects, lambda x: x["id"] == project_id)
+        if project is not None:
+            return project["id"]
+
         return None
 
     def get_users(self, workspace):
@@ -439,7 +400,7 @@ class ClockifyAPI:
         Returns list of users in project
         """
         user_ids = []
-        url = self.base_url_api + "/workspaces/%s/projects/%s/users" % (
+        url = self.base_url + "/workspaces/%s/projects/%s/users" % (
             workspace_id,
             project_id,
         )
@@ -454,44 +415,36 @@ class ClockifyAPI:
         """
         Convert from username to user_id
         """
-        user_id = None
         users = self.get_users(workspace)
-        for user in users:
-            if user["name"] == username:
-                user_id = user["id"]
-        if user_id is None:
-            raise RuntimeError(
-                "User %s not found in workspace %s" % (username, workspace)
-            )
-        return user_id
+        user = first(users, lambda x: x["name"] == username)
+        if user is not None:
+            return user["id"]
+
+        raise RuntimeError("User %s not found in workspace %s" % (username, workspace))
 
     def get_email_by_id(self, user_id, workspace):
         """
         Convert from user_id to email
         """
-        email = None
         users = self.get_users(workspace)
-        for user in users:
-            if user["id"] == user_id:
-                email = user["email"]
-        if email is None:
-            raise RuntimeError(
-                "User ID %s not found in workspace %s" % (user_id, workspace)
-            )
-        return email
+        user = first(users, lambda x: x["id"] == user_id)
+        if user is not None:
+            return user["email"]
+
+        raise RuntimeError(
+            "User ID %s not found in workspace %s" % (user_id, workspace)
+        )
 
     def get_userid_by_email(self, email, workspace):
         """
         Convert from email to userid
         """
-        user_id = None
         users = self.get_users(workspace)
-        for user in users:
-            if user["email"] == email:
-                user_id = user["id"]
-        if user_id is None:
-            raise RuntimeError("User %s not found in workspace %s" % (email, workspace))
-        return user_id
+        user = first(users, lambda x: x["email"] == email)
+        if user is not None:
+            return user["id"]
+
+        raise RuntimeError("User %s not found in workspace %s" % (email, workspace))
 
     def _load_project_admin(self, project):
         """
@@ -518,7 +471,7 @@ class ClockifyAPI:
 
         # get url for request
         ws_id = self.get_workspace_id(project.workspace)
-        url = self.base_url_api + "/workspaces/%s/projects" % ws_id
+        url = self.base_url + "/workspaces/%s/projects" % ws_id
 
         # generate params json
         params = project.excrete(self)
@@ -550,7 +503,7 @@ class ClockifyAPI:
         """
         ws_id = self.get_workspace_id(proj.workspace)
         proj_id = self.get_project_id(proj.name, proj.client, proj.workspace)
-        url = self.base_url_api + "/workspaces/%s/projects/%s/team" % (ws_id, proj_id)
+        url = self.base_url + "/workspaces/%s/projects/%s/team" % (ws_id, proj_id)
 
         user_ids = []
         user_group_ids = []
@@ -599,7 +552,7 @@ class ClockifyAPI:
         self._load_admin()
 
         ws_id = self.get_workspace_id(workspace)
-        url = self.base_url_api + "/workspaces/%s/userGroups/" % ws_id
+        url = self.base_url + "/workspaces/%s/userGroups/" % ws_id
         params = {"name": group_name}
         retval = self.request(url, body=params, typ="POST")
         if retval.status_code == 201:
@@ -638,17 +591,14 @@ class ClockifyAPI:
         """
         Converts from usergroup_name to id
         """
-        usergroup_id = None
         user_groups = self.get_usergroups(workspace)
         for usergroup in user_groups:
             if usergroup["name"] == usergroup_name:
-                usergroup_id = usergroup["id"]
+                return usergroup["id"]
 
-        if usergroup_id is None:
-            raise RuntimeError(
-                "User Group %s not found in workspace %s" % (usergroup_name, workspace)
-            )
-        return usergroup_id
+        raise RuntimeError(
+            "User Group %s not found in workspace %s" % (usergroup_name, workspace)
+        )
 
     def get_tags(self, workspace):
         """
@@ -690,31 +640,23 @@ class ClockifyAPI:
         """
         Gets tag_name from tag_id
         """
-        tag_name = None
         tags = self.get_tags(workspace)
-        for tag in tags:
-            if tag["id"] == tag_id:
-                tag_name = tag["name"]
-        if tag_name is None:
-            raise RuntimeError(
-                "TagID %s not found in workspace %s" % (tag_id, workspace)
-            )
-        return tag_name
+        tag = first(tags, lambda x: x["id"] == tag_id)
+        if tag is not None:
+            return tag["name"]
+
+        raise RuntimeError("TagID %s not found in workspace %s" % (tag_id, workspace))
 
     def get_tag_id(self, tag_name, workspace):
         """
         Gets tag_id from tag_name
         """
-        tag_id = None
         tags = self.get_tags(workspace)
-        for tag in tags:
-            if tag["name"] == tag_name:
-                tag_id = tag["id"]
-        if tag_id is None:
-            raise RuntimeError(
-                "Tag %s not found in workspace %s" % (tag_name, workspace)
-            )
-        return tag_id
+        tag = first(tags, lambda x: x["name"] == tag_name)
+        if tag is not None:
+            return tag["id"]
+
+        raise RuntimeError("Tag %s not found in workspace %s" % (tag_name, workspace))
 
     def add_task(self, workspace_id, name, project_id, estimate):
         """
@@ -780,8 +722,7 @@ class ClockifyAPI:
         """
         for entry in entries:
             different = source.diff_entry(entry, self.user_id)
-            same = not different
-            if same:
+            if not different:  # aka same
                 return True
         return False
 
@@ -862,7 +803,7 @@ class ClockifyAPI:
         workspace_id = project["workspaceId"]
         project["archived"] = True
 
-        url = self.base_url_api + "/workspaces/%s/projects/%s" % (workspace_id, proj_id)
+        url = self.base_url + "/workspaces/%s/projects/%s" % (workspace_id, proj_id)
         retval = self.request(url, body=project, typ="PUT")
         if retval.status_code == 200:
             retval = RetVal.OK
@@ -950,7 +891,7 @@ class ClockifyAPI:
         self.archive_project(project)
 
         # Now we can delete.
-        url = self.base_url_api + "/workspaces/%s/projects/%s" % (ws_id, proj_id)
+        url = self.base_url + "/workspaces/%s/projects/%s" % (ws_id, proj_id)
         retval = self.request(url, typ="DELETE")
 
         if retval.ok:
@@ -1010,7 +951,7 @@ class ClockifyAPI:
         """
         Deletes a given client
         """
-        url = self.base_url_api + "/workspaces/%s/clients/%s" % (
+        url = self.base_url + "/workspaces/%s/clients/%s" % (
             workspace_id,
             client_id,
         )
