@@ -508,52 +508,35 @@ class ClockifyAPI:
             raise RuntimeError("User %s not found in workspace %s" % (email, workspace))
         return user_id
 
-    def add_project(
-        self,
-        name,
-        client,
-        workspace,
-        public=False,
-        billable=False,
-        color="#f44336",
-        memberships=None,
-        hourly_rate=None,
-        manager="",
-    ):
+    def _load_project_admin(self, project):
         """
-        Add project to workspace
+        Set current user to project's manager,
+        or default admin if no manager exists
         """
-        cur_user = self._loaded_user_email
-        if manager == "":
-            if not public:
-                admin = self.admin_email
-                self.logger.warning(
-                    "no manager found for project %s, making %s as manager", name, admin
-                )
+        if project.manager == "":
+            self.logger.warning(
+                "No manager for project: %s, using %s",
+                project.name,
+                self.admin_email,
+            )
             self._load_admin()
         else:
-            self._load_user(manager)
+            self._load_user(project, manager)
 
-        workspace_id = self.get_workspace_id(workspace)
-        client_id = None
-        if client is not None:
-            client_id = self.get_client_id(client, workspace, null_ok=True)
+    def add_project(self, project):
+        """
+        Add project (clockify.project.Project) to workspace
+        """
+        # Load manager / admin for creating the project
+        cur_user = self._loaded_user_email
+        self._load_project_admin(project)
 
-        url = self.base_url_api + "/workspaces/%s/projects" % workspace_id
-        params = {
-            "name": name,
-            "isPublic": public,
-            "billable": billable,
-            "color": color,
-        }
+        # get url for request
+        ws_id = self.get_workspace_id(project.workspace)
+        url = self.base_url_api + "/workspaces/%s/projects" % ws_id
 
-        if client_id is not None:
-            params["clientId"] = client_id
-
-        if memberships is not None:
-            params["memberships"] = memberships.get_data()
-        if hourly_rate is not None:
-            params["hourlyRate"] = hourly_rate.rate
+        # generate params json
+        params = project.excrete(self)
         retval = self._request(url, body=params, typ="POST")
         if retval.status_code == 201:
             self.projects.need_resync = True
@@ -571,17 +554,17 @@ class ClockifyAPI:
             )
             retval = RetVal.ERR
 
-        self._load_user(cur_user)
+        self._load_user(cur_user)  # restore previous user
 
         return retval
 
-    def add_groups_to_project(
-        self, workspace, ws_id, proj_id, ws_group_ids, proj_groups
-    ):
+    def add_groups_to_project(self, proj):
+        # self, workspace, ws_id, proj_id, ws_group_ids, proj_groups
         """
         Add groups to project
         """
-
+        ws_id = self.get_workspace_id(proj.workspace)
+        proj_id = self.get_project_id(proj.name, proj.client, proj.workspace)
         url = self.base_url_api + "/workspaces/%s/projects/%s/team" % (ws_id, proj_id)
 
         user_ids = []
@@ -593,21 +576,8 @@ class ClockifyAPI:
             for user in proj_users:
                 user_ids.append(user["id"])
 
-        # Check for group_id existence
-        for proj_group in proj_groups:
-            try:
-                group_id = proj_group["group_id"]
-                ws_group_ids.index(group_id)  # check for existence
-            except ValueError as error:
-                self.logger.warning(
-                    "Group id %d not found in toggl workspace, msg=%s",
-                    group_id,
-                    str(error),
-                )
-                break
-
-        for proj_group in proj_groups:
-            group_id = self.get_usergroup_id(proj_group["name"], workspace)
+        for group_name in proj.proj_groups:
+            group_id = self.get_usergroup_id(group_name, proj.workspace)
             user_group_ids.append(group_id)
 
         params = {"userIds": user_ids, "userGroupIds": user_group_ids}
@@ -993,21 +963,14 @@ class ClockifyAPI:
         ws_id = project["workspaceId"]
         proj_id = project["id"]
         # We have to archive before deletion.
-        self.logger.info(
-            "Archiving project before deletion (this is required by the API):"
-        )
-        retval = self.archive_project(project)
-        if retval == RetVal.OK:
-            self.logger.info("...ok")
+        self.archive_project(project)
 
         # Now we can delete.
-        self.logger.info("Deleting project:")
         url = self.base_url_api + "/workspaces/%s/projects/%s" % (ws_id, proj_id)
         retval = self._request(url, typ="DELETE")
 
         if retval.ok:
             self.projects.need_resync = True
-            self.logger.info("...ok")
             return RetVal.OK
 
         self.logger.warning(

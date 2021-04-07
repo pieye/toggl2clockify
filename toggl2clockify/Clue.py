@@ -17,9 +17,10 @@ import sys
 
 import toggl2clockify.toggl_api as toggl_api
 import toggl2clockify.clockify.api as clockify_api
-from toggl2clockify.clockify.membership import MemberShip
+from toggl2clockify.clockify.membership import MemberShips
 from toggl2clockify.clockify.retval import RetVal
 from toggl2clockify.clockify.entry import Entry
+from toggl2clockify.clockify.project import Project
 
 
 class Clue:
@@ -110,17 +111,19 @@ class Clue:
         """
         Synchronize clients from toggl to clockify
         """
-        clients = self.toggl.get_clients(workspace)
+        t_clients = self.toggl.get_clients(workspace)
+        c_clients = self.clockify.get_clients(workspace)
+        self.logger.info("Number of total clients in Toggl: %d", len(t_clients))
+        t_clients = self.cull_same_name(t_clients, c_clients)
 
-        idx = 0
-        num_clients = len(clients)
+        num_clients = len(t_clients)
         num_ok = 0
         num_skips = 0
         num_err = 0
 
-        for client in clients:
+        for idx, client in enumerate(t_clients):
             self.logger.info(
-                "adding client %s (%d of %d clients)",
+                "Adding client %s (%d of %d)",
                 client["name"],
                 idx + 1,
                 num_clients,
@@ -238,177 +241,94 @@ class Clue:
 
         return num_tasks, num_ok, num_skips, num_err
 
+    def cull_same_name(self, toggl_items, clock_items):
+        """
+        Removes projects in toggl_projs that are already on clock_projs
+        """
+        clock_names = {item["name"] for item in clock_items}
+
+        if len(clock_items) > 0:
+            new_toggl_items = [
+                item for item in toggl_items if item["name"] not in clock_names
+            ]
+            toggl_items = new_toggl_items
+            if len(toggl_items) > 0:
+                self.logger.info("Clockify already has items. Adding:")
+                printables = "\n".join([item["name"] for item in toggl_items])
+                self.logger.info(printables)
+        return toggl_items
+
+    def _get_new_toggl_projects(self, workspace):
+        """
+        Gets projects in toggl that aren't in clockify
+        """
+        toggl_projs = self.toggl.get_projects(workspace)
+        self.logger.info("Number of total Projects in Toggl: %d", len(toggl_projs))
+        clock_projs = self.clockify.get_projects(workspace)
+
+        return self.cull_same_name(toggl_projs, clock_projs)
+
     def sync_projects(self, workspace):
         """
         Synchronize projects from toggl to clockify
         """
-        toggl_projs = self.toggl.get_projects(workspace)
-        self.logger.info("Number of total Projects in Toggl: %d", len(toggl_projs))
-
-        clock_projs = self.clockify.get_projects(workspace)
-        clock_proj_names = {cPrj["name"] for cPrj in clock_projs}
-
-        # Check if it's the first run (cPrjs = 0)
-        # Get only new projects on Toggl to update in Clockify
-        if len(clock_projs) >= 1:
-            updated_toggl_projs = [
-                tPrj for tPrj in toggl_projs if tPrj["name"] not in clock_proj_names
-            ]
-            self.logger.info(
-                "Found projects in Clockify, skipping matching ones in Toggl:"
-            )
-            for proj in updated_toggl_projs:
-                self.logger.info("Found different Project: %s", proj["name"])
-            toggl_projs = updated_toggl_projs
-
-        self.logger.info("Number of new Projects in Toggl: %d", (len(toggl_projs)))
-        self.logger.info(
-            " Number of total Projects in Clockify: %d, begin sync:", (len(clock_projs))
-        )
-
-        workspace_id = self.clockify.get_workspace_id(workspace)
-
+        toggl_projs = self._get_new_toggl_projects(workspace)
         # Load all Workspace Groups in simple array
-        ws_groups = self.toggl.get_groups(workspace)
-        if ws_groups is None:
-            ws_groups = []
+        t_groups = self.toggl.get_groups(workspace)
+        # map from toggl group_id to group_name
+        tgroupid_to_groupname = {group["id"]: group["name"] for group in t_groups}
 
-        ws_group_ids = []
-        for wgroup in ws_groups:
-            ws_group_ids.append(wgroup["id"])
-
-        idx = 0
         num_prjs = len(toggl_projs)
         num_ok = 0
         num_skips = 0
         num_err = 0
 
-        for proj in toggl_projs:
-            client_name = ""
-            if "cid" in proj:
-                client_name = self.toggl.get_client_name(
-                    proj["cid"], workspace, null_ok=True
-                )
+        for idx, t_proj in enumerate(toggl_projs):
+            c_proj = Project(t_proj)
+
+            # Convert from toggl_ids to strings
+            c_memberships = MemberShips(self.clockify)
+            err = c_proj.ingest(
+                workspace, self.toggl, t_proj, tgroupid_to_groupname, c_memberships
+            )
+
             self.logger.info(
-                "Adding project %s (%d of %d projects)",
-                proj["name"] + "|" + client_name,
+                "Adding project %s|%s (%d of %d projects)",
+                str(c_proj.name),
+                str(c_proj.client),
                 idx + 1,
                 num_prjs,
             )
 
-            # Prepare Group assignment to Projects
-            proj_groups = self.toggl.get_project_groups(proj["name"], workspace)
-            # self.logger.info(" Groups assigned in Toggl: %s"%pgroups)
+            if err:
+                num_err += 1
+                continue
 
-            if proj_groups is None:
-                proj_groups = []
-                ws_group_ids = []
-            else:
-                # Add group name to toggl Groups array
-                for pgroup in proj_groups:
-                    for wgroup in ws_groups:
-                        if pgroup["group_id"] == wgroup["id"]:
-                            pgroup["name"] = wgroup["name"]
+            retval = self.clockify.add_project(c_proj)
 
-            name = proj["name"]
-
-            if name not in clock_proj_names:
-                err = False
-
-                is_public = not proj["is_private"]
-                billable = proj["billable"]
-                color = proj["hex_color"]
-                members = self.toggl.get_project_users(proj["name"], workspace)
-                if members is None:
-                    members = []
-
-                membership = MemberShip(self.clockify)
-                for member in members:
-                    try:
-                        email = self.toggl.get_user_email(member["uid"], workspace)
-                    except Exception as error:
-                        self.logger.warning(
-                            "user id %d not found in toggl workspace, msg=%s",
-                            member["uid"],
-                            str(error),
-                        )
-                        err = True
-                        break
-
-                    try:
-                        manager = member["manager"]
-                        membership.add_membership(
-                            email,
-                            proj["name"],
-                            workspace,
-                            m_type="PROJECT",
-                            m_status="ACTIVE",
-                            hourly_rate=None,
-                            manager=manager,
-                        )
-                    except Exception as error:
-                        self.logger.warning(
-                            "error adding user %s to clockify project, msg=%s",
-                            email,
-                            str(error),
-                        )
-                        err = True
-                        break
-
-                if not err:
-
-                    retval = self.clockify.add_project(
-                        name,
-                        client_name,
-                        workspace,
-                        is_public,
-                        billable,
-                        color,
-                        memberships=membership,
-                        manager=membership.get_manager_email(),
-                    )
-                    if (retval == RetVal.OK) and (proj_groups == []):
-                        self.logger.info(" ...ok, done.")
-                        num_ok += 1
-                    if (retval == RetVal.OK) and (proj_groups != []):
-                        self.logger.info(
-                            " ...ok, now processing User Group assignments:"
-                        )
-                        proj_id = self.clockify.get_project_id(
-                            name, client_name, workspace
-                        )
-                        self.clockify.add_groups_to_project(
-                            workspace, workspace_id, proj_id, ws_group_ids, proj_groups
-                        )
-                        self.logger.info(" ...ok, done.")
-                        num_ok += 1
-                    elif retval == RetVal.EXISTS:
-                        self.logger.info("... project %s already exists, skip...", name)
-                        num_skips += 1
-                    elif retval == RetVal.FORBIDDEN:
-                        manager = membership.get_manager_email()
-                        self.logger.error(
-                            " Could not add project %s. %s was project admin in toggl, \
-                              but seems to not be admin in clockify. Check your workspace \
-                              settings and grant admin rights to %s.",
-                            name,
-                            manager,
-                            manager,
-                        )
-                        sys.exit(1)
-                    else:
-                        num_err += 1
-                else:
-                    num_err += 1
-            else:
-                self.logger.info(" ...project %s already exists, skip...", name)
-
-                # Add groups even if project exist.
-                # if pgroups != []:
-                #    self.clockify.addGroupsToProject(workspace, wsId, pId, wgroupIds, pgroups)
-
+            if retval == RetVal.OK and not c_proj.groups:
+                self.logger.info(" ...ok, done.")
+                num_ok += 1
+            if retval == RetVal.OK and c_proj.groups:
+                self.logger.info(" ...ok, processing User/Group assignments:")
+                self.clockify.add_groups_to_project(c_proj)
+                self.logger.info(" ...ok, done.")
+                num_ok += 1
+            elif retval == RetVal.EXISTS:
+                self.logger.info("... project %s exists, skip...", c_proj.name)
                 num_skips += 1
-            idx += 1
+            elif retval == RetVal.FORBIDDEN:
+                self.logger.error(
+                    " Could not add project %s. %s was project admin in toggl, \
+                      but seems to not be admin in clockify. Check your workspace \
+                      settings and grant admin rights to %s.",
+                    c_proj.name,
+                    c_proj.manager,
+                    c_proj.manager,
+                )
+                sys.exit(1)
+            else:
+                num_err += 1
 
         return num_prjs, num_ok, num_skips, num_err
 
@@ -533,9 +453,9 @@ class Clue:
                 total_count,
             )
 
-            email = self.verify_email(t_entry["uid"],
-                                      t_entry["user"],
-                                      t_entry["description"])
+            email = self.verify_email(
+                t_entry["uid"], t_entry["user"], t_entry["description"]
+            )
             if email is None:
                 self._num_skip += 1
                 continue

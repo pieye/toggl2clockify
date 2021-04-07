@@ -142,7 +142,8 @@ class TogglAPI:
             url = self.url + "/workspaces/%d/groups" % ws_id
             req = self._request(url)
             if req.ok:
-                self.groups = req.json()
+                # ensure empty list rather than None
+                self.groups = req.json() or []
             else:
                 raise RuntimeError(
                     "Error getting toggl workspace groups, status code=%d, msg=%s"
@@ -247,6 +248,9 @@ class TogglAPI:
             next_start = cur_stop
 
     def _get_reports(self, workspace_name, since_until, callback, time_zone="CET"):
+        """
+        Stream entries for a user from the API
+        """
         since, until = since_until
         since = since.isoformat() + time_zone
         until = until.isoformat() + time_zone
@@ -356,12 +360,15 @@ class TogglAPI:
         """
         users = self.get_users(workspace_name)
         email = None
+
         for user in users:
             if user["id"] == user_id:
                 email = user["email"]
+                break
+
         if email is None:
             raise RuntimeError(
                 "userID %d (%s) not found in workspace %s"
-                % (user_id, email, workspace_name)
+                % (user_id, str(email), workspace_name)
             )
         return email
