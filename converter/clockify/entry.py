@@ -158,7 +158,7 @@ class Entry:
             return True
             # self.logger.info("entry diff @desc: %s %s",
             # (str(params["description"]), str(d['description'])))
-        if this["userId"] != other["userId"]:
+        if self.user_id != other["userId"]:
             return True
             # self.logger.info("entry diff @userID: %s %s",
             # (str(self.userID), str(d['userId'])))
