@@ -72,7 +72,7 @@ class ClockifyAPI:
         for token in api_tokens:
             self.logger.info("testing clockify APIKey %s", token)
             url = self.base_url + "/user"
-            retval = self.request(url, None, api_token=token)
+            retval = self._request(url, token, None, "GET")
             if retval.status_code != 200:
                 raise RuntimeError(
                     "Error loading user (API token %s), status code %s"
@@ -124,6 +124,9 @@ class ClockifyAPI:
         return user.token
 
     def get_user_id(self, email):
+        """
+        returns clockify_id of given email
+        """
         user = first(self._api_users, lambda x: x.email == email)
         return user.clockify_id
 
@@ -171,13 +174,18 @@ class ClockifyAPI:
 
         return retval_data
 
-    def request(self, url, email, body=None, typ="GET", api_token=None):
+    def request(self, url, email, body=None, typ="GET"):
         """
         Executes a requests.get/put/post/delete
         Automatically halts to prevent overloading API limit
         """
-        if api_token is None:
-            api_token = self._get_api_key(email)
+        token = self._get_api_key(email)
+        return self._request(url, token, body, typ)
+
+    def _request(self, url, api_token, body, typ):
+        """
+        Internal request function
+        """
 
         start_ts = time.time()
         headers = {"X-Api-Key": api_token}
@@ -416,9 +424,7 @@ class ClockifyAPI:
         """
         if project.manager == "":
             self.logger.warning(
-                "No manager for project: %s, using %s",
-                project.name,
-                self.admin_email,
+                "No manager for project: %s, using %s", project.name, self.admin_email,
             )
             return self.admin_email
 
@@ -880,10 +886,7 @@ class ClockifyAPI:
         """
         Deletes a given client
         """
-        url = self.base_url + "/workspaces/%s/clients/%s" % (
-            workspace_id,
-            client_id,
-        )
+        url = self.base_url + "/workspaces/%s/clients/%s" % (workspace_id, client_id,)
         retval = self.request(url, self.admin_email, typ="DELETE")
         if retval.ok:
             self.clients.need_resync = True
