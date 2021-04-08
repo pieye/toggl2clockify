@@ -59,8 +59,6 @@ class ClockifyAPI:
 
         self._api_users = []
         self._test_tokens(api_tokens)
-        self._loaded_user_email = None
-
         self._get_workspaces()
 
     def _test_tokens(self, api_tokens):
@@ -424,7 +422,9 @@ class ClockifyAPI:
         """
         if project.manager == "":
             self.logger.warning(
-                "No manager for project: %s, using %s", project.name, self.admin_email,
+                "No manager for project: %s, using %s",
+                project.name,
+                self.admin_email,
             )
             return self.admin_email
 
@@ -886,7 +886,10 @@ class ClockifyAPI:
         """
         Deletes a given client
         """
-        url = self.base_url + "/workspaces/%s/clients/%s" % (workspace_id, client_id,)
+        url = self.base_url + "/workspaces/%s/clients/%s" % (
+            workspace_id,
+            client_id,
+        )
         retval = self.request(url, self.admin_email, typ="DELETE")
         if retval.ok:
             self.clients.need_resync = True
