@@ -7,6 +7,17 @@ import dateutil.parser
 import pytz
 
 
+def is_duplicate_entry(source, entries):
+    """
+    Returns if source exists inside entries
+    """
+    for entry in entries:
+        different = source.diff_entry(entry)
+        if not different:  # aka same
+            return True
+    return False
+
+
 def time_to_utc(time):
     """
     Converts time from its relevant timezone to UTC
@@ -130,7 +141,7 @@ class Entry:
 
         return params
 
-    def diff_entry(self, other, user_id):
+    def diff_entry(self, other):
         """
         Returns true if this entry is different to the other entry
         """
@@ -149,7 +160,7 @@ class Entry:
             return True
             # self.logger.info("entry diff @desc: %s %s",
             # (str(params["description"]), str(d['description'])))
-        if user_id != other["userId"]:
+        if this["userId"] != other["userId"]:
             return True
             # self.logger.info("entry diff @userID: %s %s",
             # (str(self.userID), str(d['userId'])))
@@ -183,6 +194,7 @@ class EntryQuery:
         self.start = None
         self.timezone = ""
         self.api_dict = None
+        self.user_id = None
 
         if len(args) == 2:
             email, workspace = args
@@ -204,6 +216,7 @@ class EntryQuery:
         self.client_name = time_entry.client_name
         self.start = time_entry.utc_start
         self.timezone = time_entry.timezone
+        self.user_id = time_entry.user_id
 
     def to_api_dict(self, api):
         """

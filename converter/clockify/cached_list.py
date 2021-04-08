@@ -47,9 +47,9 @@ class CachedList:
         """
         url = self.url % args
         if self.multi:
-            self.data = api.multi_get_request(url, sudo=True)
+            self.data = api.multi_get_request(url, api.admin_email)
         else:
-            retval = api.request(url, typ="GET", sudo=True)
+            retval = api.request(url, api.admin_email, typ="GET")
             self.data = retval.json()
 
         file_name = self.file_name()

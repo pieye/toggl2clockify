@@ -17,9 +17,10 @@ import json
 import requests
 
 from converter.clockify.retval import RetVal
-from converter.clockify.entry import EntryQuery
+from converter.clockify.entry import EntryQuery, is_duplicate_entry
 from converter.clockify.cached_list import CachedList
 from converter.clockify.helpers import match_client, safe_get, first
+from converter.clockify.api_user import APIUser
 
 
 class ClockifyAPI:
@@ -59,7 +60,6 @@ class ClockifyAPI:
         self._api_users = []
         self._test_tokens(api_tokens)
         self._loaded_user_email = None
-        self._load_user(self._api_users[0]["email"])
 
         self._get_workspaces()
 
@@ -71,10 +71,8 @@ class ClockifyAPI:
         fallback_found = False
         for token in api_tokens:
             self.logger.info("testing clockify APIKey %s", token)
-
-            self.api_token = token
             url = self.base_url + "/user"
-            retval = self.request(url)
+            retval = self.request(url, None, api_token=token)
             if retval.status_code != 200:
                 raise RuntimeError(
                     "Error loading user (API token %s), status code %s"
@@ -82,24 +80,22 @@ class ClockifyAPI:
                 )
 
             retval = retval.json()
-            user = {}
-            user["name"] = retval["name"]
-            user["token"] = token
-            user["email"] = retval["email"]
-            user["id"] = retval["id"]
+
+            user = APIUser(token, retval["name"], retval["email"], retval["id"])
 
             active_status = ["ACTIVE", "PENDING_EMAIL_VERIFICATION"]
             if retval["status"].upper() not in active_status:
                 raise RuntimeError(
                     "user '%s' is not an active user in clockify. \
                     Please activate the user for the migration process"
-                    % user["email"]
+                    % user.email
                 )
 
             self._api_users.append(user)
 
-            if retval["email"].lower() == self.admin_email.lower():
+            if user.email.lower() == self.admin_email.lower():
                 admin_found = True
+                user.is_admin = True
 
             if (
                 self.fallback_email is not None
@@ -123,59 +119,17 @@ class ClockifyAPI:
                 % self.fallback_email
             )
 
-    def _load_admin(self):
-        """
-        Loads admin user as current api user.
-        """
-        return self._load_user(self.admin_email)
+    def _get_api_key(self, email):
+        user = first(self._api_users, lambda x: x.email == email)
+        return user.token
 
-    def _load_user(self, email):
-        """
-        Loads given email as api user
-        """
-        current_email = self._loaded_user_email
-        if current_email is None:
-            current_email = ""
-
-        # Early exit if already loaded.
-        if email.lower() == current_email.lower():
-            return RetVal.OK
-
-        success = False
-        for user in self._api_users:
-            if user["email"].lower() == email.lower():
-                self.api_token = user["token"]
-                self.user_email = user["email"]
-                self.user_id = user["id"]
-                url = self.base_url + "/user"
-                retval = self.request(url)
-                if retval.status_code != 200:
-                    raise RuntimeError(
-                        "error loading user %s, status code %s"
-                        % (user["email"], str(retval.status_code))
-                    )
-                success = True
-                self._loaded_user_email = user["email"]
-                break
-
-        if success:
-            return RetVal.OK
-
-        self.logger.warning("user %s not found", email)
-        return RetVal.ERR
-
-    def multi_get_request(self, url, sudo=False):
+    def multi_get_request(self, url, email):
         """
         Paginated get request
         """
-        if sudo:  # swap to admin, run command, swap back
-            cur_user = self._loaded_user_email
-            self._load_admin()
-            result = self.multi_get_request(url)
-            self._load_user(cur_user)
-            return result
+        api_token = self._get_api_key(email)
 
-        headers = {"X-Api-Key": self.api_token}
+        headers = {"X-Api-Key": api_token}
         id_key = "id"
         page = 1
         retval_data = []
@@ -213,20 +167,17 @@ class ClockifyAPI:
 
         return retval_data
 
-    def request(self, url, body=None, typ="GET", sudo=False):
+    def request(self, url, email, body=None, typ="GET", api_token=None):
         """
         Executes a requests.get/put/post/delete
         Automatically halts to prevent overloading API limit
         """
-        if sudo:  # swap to admin, run command, swap back
-            cur_user = self._loaded_user_email
-            self._load_admin()
-            result = self.request(url, body, typ)
-            self._load_user(cur_user)
-            return result
+        if api_token is None:
+            api_token = self._get_api_key(email)
 
         start_ts = time.time()
-        headers = {"X-Api-Key": self.api_token}
+        headers = {"X-Api-Key": api_token}
+
         if typ == "GET":
             response = requests.get(url, headers=headers, params=body)
         elif typ == "PUT":
@@ -271,13 +222,13 @@ class ClockifyAPI:
         """
         if self.workspaces is None:
             url = self.base_url + "/workspaces"
-            retval = self.request(url)
+            retval = self.request(url, self.admin_email)
             if retval.status_code == 200:
                 self.workspaces = retval.json()
             else:
                 raise RuntimeError(
                     "Querying workspaces for user %s failed, status code=%d, msg=%s"
-                    % (self._api_users[0]["email"], retval.status_code, retval.text)
+                    % (self._api_users[0].email, retval.status_code, retval.text)
                 )
         return self.workspaces
 
@@ -288,7 +239,7 @@ class ClockifyAPI:
         ws_id = self.get_workspace_id(workspace)
         url = self.base_url + "/workspaces/%s/clients" % ws_id
         params = {"name": name}
-        retval = self.request(url, body=params, typ="POST", sudo=True)
+        retval = self.request(url, self.admin_email, body=params, typ="POST")
 
         if not retval.ok:
             if retval.status_code == 400:
@@ -324,15 +275,9 @@ class ClockifyAPI:
         """
         Get tasks assigned to project
         """
-        cur_user = self._loaded_user_email
-        self._load_admin()
-
         ws_id = self.get_workspace_id(workspace)
-
         url = self.base_url + "/workspaces/%s/projects/%s/tasks" % (ws_id, project_id)
-        project_tasks = self.multi_get_request(url)
-
-        self._load_user(cur_user)
+        project_tasks = self.multi_get_request(url, self.admin_email)
 
         return project_tasks
 
@@ -418,7 +363,7 @@ class ClockifyAPI:
             project_id,
         )
 
-        retval = self.request(url, typ="GET")
+        retval = self.request(url, self.admin_email, typ="GET")
         user_ids = retval.json()
         self.logger.info("Finished getting users already assigned to the project.")
 
@@ -460,7 +405,7 @@ class ClockifyAPI:
 
         return None
 
-    def _load_project_admin(self, project):
+    def _get_project_admin(self, project):
         """
         Set current user to project's manager,
         or default admin if no manager exists
@@ -471,17 +416,16 @@ class ClockifyAPI:
                 project.name,
                 self.admin_email,
             )
-            self._load_admin()
-        else:
-            self._load_user(project.manager)
+            return self.admin_email
+
+        return project.manager
 
     def add_project(self, project):
         """
         Add project (clockify.project.Project) to workspace
         """
         # Load manager / admin for creating the project
-        cur_user = self._loaded_user_email
-        self._load_project_admin(project)
+        email = self._get_project_admin(project)
 
         # get url for request
         ws_id = self.get_workspace_id(project.workspace)
@@ -489,7 +433,7 @@ class ClockifyAPI:
 
         # generate params json
         params = project.excrete(self)
-        retval = self.request(url, body=params, typ="POST")
+        retval = self.request(url, email, body=params, typ="POST")
         if retval.status_code == 201:
             self.projects.need_resync = True
             retval = RetVal.OK
@@ -506,8 +450,6 @@ class ClockifyAPI:
             )
             retval = RetVal.ERR
 
-        self._load_user(cur_user)  # restore previous user
-
         return retval
 
     def add_groups_to_project(self, proj):
@@ -518,6 +460,7 @@ class ClockifyAPI:
         ws_id = self.get_workspace_id(proj.workspace)
         proj_id = self.get_project_id(proj.name, proj.client, proj.workspace)
         url = self.base_url + "/workspaces/%s/projects/%s/team" % (ws_id, proj_id)
+        email = self._get_project_admin(proj)
 
         user_ids = []
         user_group_ids = []
@@ -534,7 +477,7 @@ class ClockifyAPI:
 
         params = {"userIds": user_ids, "userGroupIds": user_group_ids}
 
-        retval = self.request(url, body=params, typ="POST")
+        retval = self.request(url, email, body=params, typ="POST")
         if (retval.status_code == 201) or (retval.status_code == 200):
             retval = RetVal.OK
         elif retval.status_code == 400:
@@ -562,13 +505,11 @@ class ClockifyAPI:
         """
         Add usergroup to workspace
         """
-        cur_user = self._loaded_user_email
-        self._load_admin()
 
         ws_id = self.get_workspace_id(workspace)
         url = self.base_url + "/workspaces/%s/userGroups/" % ws_id
         params = {"name": group_name}
-        retval = self.request(url, body=params, typ="POST")
+        retval = self.request(url, self.admin_email, body=params, typ="POST")
         if retval.status_code == 201:
             self.usergroups.need_resync = True
             retval = RetVal.OK
@@ -583,7 +524,6 @@ class ClockifyAPI:
             )
             retval = RetVal.ERR
 
-        self._load_user(cur_user)
         return retval
 
     def get_usergroup_name(self, usergroup_id, workspace):
@@ -629,7 +569,7 @@ class ClockifyAPI:
         ws_id = self.get_workspace_id(workspace)
         url = self.base_url + "/workspaces/%s/tags" % ws_id
         params = {"name": tag_name}
-        retval = self.request(url, body=params, typ="POST", sudo=True)
+        retval = self.request(url, self.admin_email, body=params, typ="POST")
         if retval.status_code == 201:
             self.tags.need_resync = True
             retval = RetVal.OK
@@ -677,7 +617,7 @@ class ClockifyAPI:
             project_id,
         )
         params = {"name": name, "projectId": project_id, "estimate": estimate}
-        retval = self.request(url, body=params, typ="POST", sudo=True)
+        retval = self.request(url, self.admin_email, body=params, typ="POST")
         if retval.status_code == 201:
             retval = RetVal.OK
         elif retval.status_code == 400:
@@ -722,24 +662,10 @@ class ClockifyAPI:
         self.logger.info(msg)
         return result
 
-    def is_duplicate_entry(self, source, entries):
-        """
-        Returns if source exists inside entries
-        """
-        for entry in entries:
-            different = source.diff_entry(entry, self.user_id)
-            if not different:  # aka same
-                return True
-        return False
-
     def add_entry(self, entry):
         """
         Adds a given entry
         """
-        retval = self._load_user(entry.email)
-        if retval != RetVal.OK:
-            return retval, None
-
         # get clockify ids
         entry.process_ids(self)
         api_dict = entry.to_api_dict()
@@ -751,13 +677,13 @@ class ClockifyAPI:
             return RetVal.ERR, None
 
         # Check if the entry already exists
-        if self.is_duplicate_entry(entry, web_entries):
+        if is_duplicate_entry(entry, web_entries):
             return RetVal.EXISTS, None
 
         # actually add the entry
         ws_id = entry.workspace_id
         url = self.base_url + "/workspaces/%s/time-entries" % ws_id
-        retval = self.request(url, body=api_dict, typ="POST")
+        retval = self.request(url, entry.email, body=api_dict, typ="POST")
         if not retval.ok:
             # Failed to add entry
             self.logger.warning(
@@ -776,28 +702,26 @@ class ClockifyAPI:
         Returns the time entries for a given user
         """
         data = None
-        retval = self._load_user(query.email)
 
-        if retval == RetVal.OK:
-            ws_id = self.get_workspace_id(query.workspace)
-            url = self.base_url + "/workspaces/%s/user/%s/time-entries" % (
-                ws_id,
-                self.user_id,
+        ws_id = self.get_workspace_id(query.workspace)
+        url = self.base_url + "/workspaces/%s/user/%s/time-entries" % (
+            ws_id,
+            query.user_id,
+        )
+        params = query.to_api_dict(self)
+
+        retval = self.request(url, query.email, body=params, typ="GET")
+        if retval.ok:
+            data = retval.json()
+            retval = RetVal.OK
+        else:
+            self.logger.warning(
+                "Error get_time_entries, status code=%d, msg=%s\n%s",
+                retval.status_code,
+                retval.reason,
+                params,
             )
-            params = query.to_api_dict(self)
-
-            retval = self.request(url, body=params, typ="GET")
-            if retval.ok:
-                data = retval.json()
-                retval = RetVal.OK
-            else:
-                self.logger.warning(
-                    "Error get_time_entries, status code=%d, msg=%s\n%s",
-                    retval.status_code,
-                    retval.reason,
-                    params,
-                )
-                retval = RetVal.ERR
+            retval = RetVal.ERR
 
         return retval, data
 
@@ -810,7 +734,7 @@ class ClockifyAPI:
         project["archived"] = True
 
         url = self.base_url + "/workspaces/%s/projects/%s" % (workspace_id, proj_id)
-        retval = self.request(url, body=project, typ="PUT")
+        retval = self.request(url, self.admin_email, body=project, typ="PUT")
         if retval.status_code == 200:
             retval = RetVal.OK
         else:
@@ -829,28 +753,31 @@ class ClockifyAPI:
         Deletes all user's time entries
         """
         ws_id = self.get_workspace_id(workspace)
+        user = first(self._api_users, lambda x: x.email == email)
+        query = EntryQuery(email, workspace)
+        query.user_id = user.clockify_id
+
         while True:
             self.logger.info("Fetching more entries (50 at a time):")
-            query = EntryQuery(email, workspace)
-            retval, entries = self.get_time_entries(query)
-            entry_cnt = 0
-            if retval == RetVal.OK:
-                cur_user = self._loaded_user_email
-                retval = self._load_admin()
-                if retval == RetVal.OK:
-                    entry_cnt = len(entries)
-                    delete_tasks = []
-                    task_status = ["_"] * entry_cnt
-                    # add tasks to task list
-                    for idx, entry in enumerate(entries):
-                        delete_tasks.append(
-                            (entry["id"], ws_id, (idx, entry_cnt, task_status))
-                        )
-                    retval = self.thread_pool.starmap(
-                        self.delete_entry_threaded, delete_tasks
-                    )
 
-                self._load_user(cur_user)
+            retval, entries = self.get_time_entries(query)  # returns first 50
+
+            entry_cnt = 0
+
+            if retval == RetVal.OK:
+                entry_cnt = len(entries)
+                delete_tasks = []
+                task_status = ["_"] * entry_cnt
+                # add tasks to task list
+                for idx, entry in enumerate(entries):
+                    delete_tasks.append(
+                        (entry["id"], ws_id, (idx, entry_cnt, task_status))
+                    )
+                # do actual deletion
+                retval = self.thread_pool.starmap(
+                    self.delete_entry_threaded, delete_tasks
+                )
+
             if entry_cnt == 0:
                 break
         return entry_cnt
@@ -884,7 +811,7 @@ class ClockifyAPI:
         Returns a direct requests.request result, including retval.ok, retval.status_code etc.
         """
         url = self.base_url + "/workspaces/%s/time-entries/%s" % (ws_id, entry_id)
-        retval = self.request(url, typ="DELETE")
+        retval = self.request(url, self.admin_email, typ="DELETE")
         return retval
 
     def delete_project(self, project):
@@ -898,7 +825,7 @@ class ClockifyAPI:
 
         # Now we can delete.
         url = self.base_url + "/workspaces/%s/projects/%s" % (ws_id, proj_id)
-        retval = self.request(url, typ="DELETE")
+        retval = self.request(url, self.admin_email, typ="DELETE")
 
         if retval.ok:
             self.projects.need_resync = True
@@ -915,9 +842,6 @@ class ClockifyAPI:
         """
         Deletes all projects in the workspace
         """
-        cur_user = self._loaded_user_email  # store current user
-
-        self._load_user(self.admin_email)
         self.logger.info("Deleting all projects...")
         projects = self.get_projects(workspace)
 
@@ -933,25 +857,20 @@ class ClockifyAPI:
             self.logger.info(msg)
             self.delete_project(project)
 
-        self._load_user(cur_user)  # restore previous user
-
     def wipeout_workspace(self, workspace):
         """
         Deletes all contents of workspace, starting from entries
         then proceeding to projects, clients, tags and tasks
         """
-        cur_user = self._loaded_user_email
         for user in self._api_users:
-            self.logger.info("Deleting all entries from user %s", user["email"])
-            self.delete_user_entries(user["email"], workspace)
+            self.logger.info("Deleting all entries from user %s", user.email)
+            self.delete_user_entries(user.email, workspace)
 
         # self.delete_all_tags(workspace) not implemented
         # self.delete_all_tasks(workspace) not implemented
         # self.delete_all_groups(workspace) not implemented
         self.delete_all_projects(workspace)
         self.delete_all_clients(workspace)
-
-        self._load_user(cur_user)
 
     def delete_client(self, client_id, workspace_id):
         """
@@ -961,7 +880,7 @@ class ClockifyAPI:
             workspace_id,
             client_id,
         )
-        retval = self.request(url, typ="DELETE")
+        retval = self.request(url, self.admin_email, typ="DELETE")
         if retval.ok:
             self.clients.need_resync = True
             return RetVal.OK
