@@ -145,7 +145,7 @@ the very end when you are sure, that all data has been migrated successfully**
 
 Your very last invokation of the import tool should be
 ```bash
-bin/main.exe --skipClients --skipProjects --skipTasks --skipEntries --skipTags --doArchive
+bin/toggl2clockify.exe --skipClients --skipProjects --skipTasks --skipEntries --skipTags --doArchive
 ```
 
 When you try to add time entries for projects, which are **already archived in clockify**, the tool gets messed up:

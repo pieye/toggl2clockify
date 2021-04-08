@@ -399,10 +399,7 @@ class ClockifyAPI:
         projects = self.get_projects(workspace)
 
         project = first(projects, lambda x: x["id"] == project_id)
-        if project is not None:
-            return project["id"]
-
-        return None
+        return project
 
     def get_users(self, workspace):
         """
