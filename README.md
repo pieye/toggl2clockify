@@ -183,11 +183,21 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
 - User groups
 
 ## Clearing the workspace
-You can use the `--wipeAll` flag to clear the entire workspace. This is useful for development/testing, since the duplication detection isn't perfect.
-This restores the workspace to a blank slate without having to create a new workspace. The program will wipe everything first, then immediately exit.
+You can use the `--wipeAll` flag to clear the entire workspace. 
+This is useful for development/testing, since the duplication detection isn't perfect.
+This restores the workspace to a blank slate without having to create a new workspace. 
+The program will wipe everything first, then immediately exit.
 
 
 ## Development
+
+After running `pip install -r requirements.txt`, run:
+`pre-commit install`
+This adds a small script that checks your code before commits. 
+It will prevent you from committing unless your code passes formatting and pylint.
+
+To run the commands individually:
+
 Use black for auto-formatting
 
 ```bash
