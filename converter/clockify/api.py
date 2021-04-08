@@ -171,8 +171,9 @@ class ClockifyAPI:
         if sudo:  # swap to admin, run command, swap back
             cur_user = self._loaded_user_email
             self._load_admin()
-            self.multi_get_request(url)
+            result = self.multi_get_request(url)
             self._load_user(cur_user)
+            return result
 
         headers = {"X-Api-Key": self.api_token}
         id_key = "id"
@@ -220,8 +221,9 @@ class ClockifyAPI:
         if sudo:  # swap to admin, run command, swap back
             cur_user = self._loaded_user_email
             self._load_admin()
-            self.request(url, body, typ)
+            result = self.request(url, body, typ)
             self._load_user(cur_user)
+            return result
 
         start_ts = time.time()
         headers = {"X-Api-Key": self.api_token}
@@ -290,6 +292,12 @@ class ClockifyAPI:
 
         if not retval.ok:
             if retval.status_code == 400:
+                self.logger.warning(
+                    "Error adding client %s, status code=%d, msg=%s",
+                    name,
+                    retval.status_code,
+                    retval.reason,
+                )
                 retval = RetVal.EXISTS
             else:
                 self.logger.warning(
