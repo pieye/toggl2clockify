@@ -117,18 +117,18 @@ mail address of the fallback user to the key **FallbackUserMail**:
 ## Run the import
 
 ### Regular import
-If you're on windows you can run the file 
+If you're on windows you can run the file directly:
 ```bash
 bin/toggl2clockify.exe
 ```
 
-directly or through python by installing the requirements, and then running it.
+Or through python by installing the requirements, and then running it.
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-make sure you have a file called **config.json in the folder from where you invoke the program**.
+Make sure you have a file called **config.json in the folder from where you invoke the program**.
 
 Run
 ```bash
@@ -136,10 +136,12 @@ bin/toggl2clockify.exe --help
 ```
 to get a list of all supported commands.
 
-**You can run the tool as often as you whish. All time entries, projects, clients and tags are checked for existance before being added to the clockify workspace**
+**You can run the tool as often as you wish. All time entries, projects, 
+clients and tags are checked for existance before being added to the clockify workspace**
 
 ### Remarks on archived projects
-**If you have archived projects in the toggl workspace, use the flag doArchive at the very end when you are sure, that all data has been migrated successfully**
+**If you have archived projects in the toggl workspace, use the flag --doArchive at 
+the very end when you are sure, that all data has been migrated successfully**
 
 Your very last invokation of the import tool should be
 ```bash
@@ -154,7 +156,8 @@ Before you start the migration, you should **unarchive all clockify projects** f
 
 ### Check the log
 
-The tool creates a file **log.txt** parse the contents for "WARNING" entries. Make sure to understand them or post a bug report if things don't work as expected.
+The tool creates a file **log.txt** parse the contents for "INFO" and "WARNING" entries. 
+Make sure to understand them or post a bug report if things don't work as expected.
 
 ## What is migrated
 - All clients of the workspace
@@ -178,13 +181,14 @@ The tool creates a file **log.txt** parse the contents for "WARNING" entries. Ma
     - end
     - tagIds
     
-    - NOT MIRGATED: timeInterval (not sure what purpose this serves), isLocked
+    - NOT MIGRATED: timeInterval (not sure what purpose this serves), isLocked
+    - BUG: Duplicate entry detection has a bug unless setting timezone to "Z"
 - All tasks of the workspace
 - User groups
 
 ## Clearing the workspace
 You can use the `--wipeAll` flag to clear the entire workspace. 
-This is useful for development/testing, since the duplication detection isn't perfect.
+This is useful for development/testing, since the duplication entry detection isn't perfect.
 This restores the workspace to a blank slate without having to create a new workspace. 
 The program will wipe everything first, then immediately exit.
 
@@ -192,7 +196,9 @@ The program will wipe everything first, then immediately exit.
 ## Development
 
 After running `pip install -r requirements.txt`, run:
+
 `pre-commit install`
+
 This adds a small script that checks your code before commits. 
 It will prevent you from committing unless your code passes formatting and pylint.
 
@@ -212,3 +218,7 @@ pip install pylint
 pip install pylint-runner
 pylint_runner
 ```
+
+## Building a new version
+
+For windows, simply navigate to the builder folder and run `build_windows.bat`
