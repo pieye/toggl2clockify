@@ -66,8 +66,6 @@ class Entry:
         self.description = t_entry["description"]
         self.project_name = t_entry["project"]
         self.client_name = t_entry["client"]
-        # self.user_id = t_entry["uid"]
-        # self.username = t_entry["user"]
         self.billable = t_entry["is_billable"]
         self.tag_names = t_entry["tags"]
         self.task_name = t_entry["task"]
@@ -85,11 +83,11 @@ class Entry:
 
     def process_ids(self, api):
         """
-        Uses api to find proj_id, client_id, workspace_id and task_id
+        Uses clockify api to find proj_id, client_id, workspace_id and task_id
         Constructs api dict
         """
         self.workspace_id = api.get_workspace_id(self.workspace)
-
+        self.user_id = api.get_user_id(self.email)
         if self.project_name is not None:
             self.proj_id = api.get_project_id(
                 self.project_name, self.client_name, self.workspace

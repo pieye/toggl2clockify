@@ -123,6 +123,10 @@ class ClockifyAPI:
         user = first(self._api_users, lambda x: x.email == email)
         return user.token
 
+    def get_user_id(self, email):
+        user = first(self._api_users, lambda x: x.email == email)
+        return user.clockify_id
+
     def multi_get_request(self, url, email):
         """
         Paginated get request
