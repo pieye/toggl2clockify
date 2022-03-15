@@ -34,7 +34,7 @@ class TogglAPI:
     def __init__(self, api_token):
         self.logger = logging.getLogger("toggl2clockify")
         self.api_token = api_token
-        self.url = "https://www.toggl.com/api/v8"
+        self.url = "https://api.track.toggl.com/api/v8"
 
         response = self._request(self.url + "/me")
         if response.status_code != 200:
