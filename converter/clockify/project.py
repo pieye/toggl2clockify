@@ -105,7 +105,7 @@ class Project:
         for member in t_members:
             # grab email of user
             try:
-                email = self.get_toggl_email(member["uid"], toggl_api)
+                email = self.get_toggl_email(toggl_api, member["uid"])
             except RuntimeError:
                 return True
 
