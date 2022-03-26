@@ -41,7 +41,7 @@ class ClockifyAPI:
 
         projects_url = self.base_url + "/workspaces/%s/projects"
         users_url = self.base_url + "/workspace/%s/users"
-        usergroups_url = self.base_url + "/workspaces/%/userGroups"
+        usergroups_url = self.base_url + "/workspaces/%s/user-groups"
         tags_url = self.base_url + "/workspaces/%s/tags"
         clients_url = self.base_url + "/workspaces/%s/clients"
 
@@ -368,12 +368,12 @@ class ClockifyAPI:
         Returns list of users in project
         """
         user_ids = []
-        url = self.base_url + "/workspaces/%s/projects/%s/users" % (
-            workspace_id,
-            project_id,
+        url = self.base_url + "/workspaces/%s/users" % (
+            workspace_id
         )
 
-        retval = self.request(url, self.admin_email, typ="GET")
+        payload = {project_id: project_id}
+        retval = self.request(url, self.admin_email, body=payload, typ="GET")
         user_ids = retval.json()
         self.logger.info("Finished getting users already assigned to the project.")
 
@@ -481,7 +481,7 @@ class ClockifyAPI:
             for user in proj_users:
                 user_ids.append(user["id"])
 
-        for group_name in proj.proj_groups:
+        for group_name in proj.groups:
             group_id = self.get_usergroup_id(group_name, proj.workspace)
             user_group_ids.append(group_id)
 
@@ -517,7 +517,7 @@ class ClockifyAPI:
         """
 
         ws_id = self.get_workspace_id(workspace)
-        url = self.base_url + "/workspaces/%s/userGroups/" % ws_id
+        url = self.base_url + "/workspaces/%s/user-groups/" % ws_id
         params = {"name": group_name}
         retval = self.request(url, self.admin_email, body=params, typ="POST")
         if retval.status_code == 201:

@@ -72,6 +72,9 @@ docs/_build/
 # PyBuilder
 target/
 
+# JetBrains
+.idea/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -122,6 +125,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-*.json
+# Project filex
+config.json
 log.txt
 /.vs/

@@ -269,7 +269,7 @@ class TogglAPI:
                 "page": page,
             }
 
-            report_url = "https://toggl.com/reports/api/v2/details"
+            report_url = "https://api.track.toggl.com/reports/api/v2/details"
             response = self._request(report_url, params=params)
             if response.status_code == 400:
                 break
